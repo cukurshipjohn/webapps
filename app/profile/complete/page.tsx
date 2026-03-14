@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function CompleteProfilePage() {
+function ProfileContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectParams = searchParams?.get("redirect");
@@ -123,5 +123,13 @@ export default function CompleteProfilePage() {
         </form>
       </div>
     </main>
+  );
+}
+
+export default function CompleteProfilePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-neutral-950 flex items-center justify-center text-amber-500">Loading...</div>}>
+      <ProfileContent />
+    </Suspense>
   );
 }
