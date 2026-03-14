@@ -128,8 +128,8 @@ export default function BookAppointmentPage() {
                     </div>
                     <h2 className="text-3xl font-bold">Booking Confirmed!</h2>
                     <p className="text-neutral-400">Your appointment has been successfully scheduled. We have sent a confirmation to your WhatsApp.</p>
-                    <Link href="/" className="inline-block px-8 py-3 bg-neutral-800 hover:bg-neutral-700 text-white font-medium rounded-full transition-all">
-                        Return Home
+                    <Link href="/dashboard" className="inline-block px-8 py-3 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-full transition-all">
+                        ✅ Lihat Riwayat Pesanan
                     </Link>
                 </div>
             </main>
@@ -140,7 +140,7 @@ export default function BookAppointmentPage() {
         <main className="min-h-screen pt-24 pb-12 px-6 bg-neutral-950 text-white">
             <div className="max-w-3xl mx-auto">
                 <div className="mb-10 text-center">
-                    <Link href="/" className="text-amber-500 hover:underline text-sm font-medium mb-4 inline-block">&larr; Back to Home</Link>
+                    <button onClick={() => router.push('/dashboard')} className="text-amber-500 hover:underline text-sm font-medium mb-4 inline-block">&larr; Kembali ke Dashboard</button>
                     <h1 className="text-4xl md:text-5xl font-bold tracking-tight">Reserve a <span className="gradient-text">Seat</span></h1>
                     <p className="text-neutral-400 mt-2">Fill in your details below to schedule an appointment.</p>
                 </div>
@@ -276,14 +276,23 @@ export default function BookAppointmentPage() {
                             </div>
                         )}
 
-                        {/* Submit */}
-                        <button
-                            type="submit"
-                            disabled={loading || !selectedSlot}
-                            className="w-full py-4 mt-8 bg-amber-500 hover:bg-amber-400 text-neutral-950 text-lg font-bold rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(245,158,11,0.15)]"
-                        >
-                            {loading ? "Processing..." : "Confirm Booking"}
-                        </button>
+                        {/* Submit & Cancel */}
+                        <div className="flex flex-col sm:flex-row gap-3 mt-8">
+                            <button
+                                type="button"
+                                onClick={() => router.push('/dashboard')}
+                                className="w-full sm:w-auto px-8 py-4 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white text-base font-medium rounded-xl transition-all border border-neutral-800 hover:border-neutral-700"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={loading || !selectedSlot}
+                                className="flex-1 py-4 bg-amber-500 hover:bg-amber-400 text-neutral-950 text-lg font-bold rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(245,158,11,0.15)]"
+                            >
+                                {loading ? "Processing..." : "✂️ Konfirmasi Booking"}
+                            </button>
+                        </div>
                     </form>
                 </div>
             </div>
