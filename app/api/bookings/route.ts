@@ -91,11 +91,15 @@ export async function POST(request: Request) {
                 (serviceType === 'home' ? `*Alamat:* ${customerAddress}\n` : '') +
                 `\nMohon bersiap tepat waktu!`;
 
-            const waServiceUrl = process.env.WHATSAPP_SERVICE_URL;
+            let waServiceUrl = process.env.WHATSAPP_SERVICE_URL;
             const waSecret = process.env.WHATSAPP_SERVICE_SECRET;
             const ownerPhone = process.env.OWNER_PHONE_NUMBER;
 
             if (waServiceUrl) {
+                // Pastikan URL memiliki protokol
+                if (!waServiceUrl.startsWith('http')) {
+                    waServiceUrl = `https://${waServiceUrl}`;
+                }
                 // Background execution (tidak di-await penuh mencegah timeout jika WA lambat)
                 // Notifikasi untuk Barber
                 fetch(`${waServiceUrl}/send-message`, {

@@ -39,11 +39,16 @@ export async function POST(request: Request) {
         if (insertError) throw insertError;
 
         // 4. Kirim OTP via WhatsApp microservice
-        const serviceUrl = process.env.WHATSAPP_SERVICE_URL;
+        let serviceUrl = process.env.WHATSAPP_SERVICE_URL;
         const serviceSecret = process.env.WHATSAPP_SERVICE_SECRET;
 
         if (!serviceUrl || !serviceSecret) {
             throw new Error('Konfigurasi WhatsApp service belum diatur di .env.local');
+        }
+
+        // Pastikan URL memiliki protokol (http:// atau https://)
+        if (!serviceUrl.startsWith('http')) {
+            serviceUrl = `https://${serviceUrl}`;
         }
 
         const waResponse = await fetch(`${serviceUrl}/send-otp`, {
