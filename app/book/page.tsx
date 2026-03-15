@@ -1,301 +1,398 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+// Harga Home Service
+const HOME_PRICING = [
+  { label: "1 Orang", price: 35000, people: 1, duration: 45 },
+  { label: "2 Orang", price: 50000, people: 2, duration: 60 },
+  { label: "3 Orang", price: 60000, people: 3, duration: 75 },
+  { label: "5+ Orang", price: 75000, people: 5, duration: 90 },
+];
+
+function formatRupiah(amount: number) {
+  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(amount);
+}
+
 export default function BookAppointmentPage() {
-    const router = useRouter();
-    const [barbers, setBarbers] = useState<any[]>([]);
-    const [services, setServices] = useState<any[]>([]);
+  const router = useRouter();
+  const [barbers, setBarbers] = useState<any[]>([]);
+  const [services, setServices] = useState<any[]>([]);
 
-    const [selectedBarber, setSelectedBarber] = useState("");
-    const [selectedService, setSelectedService] = useState("");
-    const [serviceType, setServiceType] = useState("barbershop");
-    const [date, setDate] = useState("");
+  const [selectedBarber, setSelectedBarber] = useState("");
+  const [selectedService, setSelectedService] = useState("");
+  const [serviceType, setServiceType] = useState("barbershop");
+  const [date, setDate] = useState("");
 
-    const [availableSlots, setAvailableSlots] = useState<string[]>([]);
-    const [selectedSlot, setSelectedSlot] = useState("");
-    const [customerAddress, setCustomerAddress] = useState("");
+  // Home service specific
+  const [selectedHomePricing, setSelectedHomePricing] = useState<typeof HOME_PRICING[0] | null>(null);
 
-    const [loading, setLoading] = useState(false);
-    const [fetchingSlots, setFetchingSlots] = useState(false);
-    const [error, setError] = useState("");
-    const [fetchError, setFetchError] = useState("");
-    const [success, setSuccess] = useState(false);
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [selectedSlot, setSelectedSlot] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
 
-    useEffect(() => {
-        // Alasan pengecekan Array.isArray(): jika Supabase belum dikonfigurasi
-        // atau gagal, API mengembalikan {message: "..."} bukan array.
-        // Tanpa pengecekan ini, .map() akan crash dengan "is not a function".
-        Promise.all([
-            fetch("/api/barbers").then(res => res.json()),
-            fetch("/api/services").then(res => res.json())
-        ]).then(([bData, sData]) => {
-            setBarbers(Array.isArray(bData) ? bData : []);
-            setServices(Array.isArray(sData) ? sData : []);
-            if (!Array.isArray(bData) || !Array.isArray(sData)) {
-                setFetchError(
-                    bData?.message || sData?.message ||
-                    "Gagal memuat data. Pastikan Supabase sudah dikonfigurasi di .env.local"
-                );
-            }
-        }).catch(err => {
-            console.error("Fetch error:", err);
-            setFetchError("Tidak dapat terhubung ke server. Coba refresh halaman.");
-        });
-    }, []);
+  const [loading, setLoading] = useState(false);
+  const [fetchingSlots, setFetchingSlots] = useState(false);
+  const [error, setError] = useState("");
+  const [fetchError, setFetchError] = useState("");
+  const [success, setSuccess] = useState(false);
 
-    useEffect(() => {
-        if (date && selectedBarber && serviceType) {
-            setFetchingSlots(true);
-            setSelectedSlot("");
-            fetch(`/api/bookings/availability?date=${date}&barberId=${selectedBarber}&serviceType=${serviceType}`)
-                .then(res => res.json())
-                .then(data => {
-                    if (Array.isArray(data)) {
-                        setAvailableSlots(data);
-                    } else {
-                        setAvailableSlots([]);
-                    }
-                })
-                .catch(() => setAvailableSlots([]))
-                .finally(() => setFetchingSlots(false));
-        }
-    }, [date, selectedBarber, serviceType]);
+  // Fetch barbers on mount
+  useEffect(() => {
+    fetch("/api/barbers")
+      .then(res => res.json())
+      .then(data => setBarbers(Array.isArray(data) ? data : []))
+      .catch(() => setFetchError("Tidak dapat memuat data barber."));
+  }, []);
 
-    const handleBooking = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError("");
+  // Fetch services ketika serviceType berubah
+  useEffect(() => {
+    setSelectedService("");
+    setSelectedHomePricing(null);
+    if (serviceType === "barbershop") {
+      fetch("/api/services?type=barbershop")
+        .then(res => res.json())
+        .then(data => {
+          setServices(Array.isArray(data) ? data : []);
+          if (!Array.isArray(data)) setFetchError(data?.message || "Gagal memuat layanan.");
+        })
+        .catch(() => setFetchError("Tidak dapat memuat layanan."));
+    }
+    // Untuk home, kita pakai HOME_PRICING yang sudah ada di client (tidak perlu fetch lagi)
+  }, [serviceType]);
 
-        const token = localStorage.getItem("token");
-        if (!token) {
-            setError("Please login first before booking.");
-            router.push("/login?redirect=/book");
-            return;
-        }
+  // Fetch available slots
+  useEffect(() => {
+    if (date && selectedBarber && serviceType) {
+      setFetchingSlots(true);
+      setSelectedSlot("");
+      fetch(`/api/bookings/availability?date=${date}&barberId=${selectedBarber}&serviceType=${serviceType}`)
+        .then(res => res.json())
+        .then(data => setAvailableSlots(Array.isArray(data) ? data : []))
+        .catch(() => setAvailableSlots([]))
+        .finally(() => setFetchingSlots(false));
+    }
+  }, [date, selectedBarber, serviceType]);
 
-        if (!selectedBarber || !selectedService || !selectedSlot) {
-            setError("Please fill out all required fields.");
-            return;
-        }
+  const handleBooking = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
 
-        setLoading(true);
-        try {
-            const res = await fetch("/api/bookings", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    barberId: selectedBarber,
-                    serviceId: selectedService,
-                    serviceType: serviceType,
-                    startTime: selectedSlot,
-                    customerAddress: serviceType === "home" ? customerAddress : undefined
-                }),
-            });
-
-            const data = await res.json();
-            
-            if (res.status === 401) {
-                // Sesi kadaluarsa atau user terhapus
-                localStorage.removeItem("token");
-                localStorage.removeItem("user");
-                router.push("/login?redirect=/book");
-                return;
-            }
-
-            if (!res.ok) throw new Error(data.message || "Failed to book appointment");
-
-            setSuccess(true);
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    if (success) {
-        return (
-            <main className="min-h-screen flex items-center justify-center p-6 bg-neutral-950 text-white">
-                <div className="glass max-w-lg w-full p-10 rounded-3xl text-center space-y-6">
-                    <div className="w-20 h-20 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                    </div>
-                    <h2 className="text-3xl font-bold">Booking Confirmed!</h2>
-                    <p className="text-neutral-400">Your appointment has been successfully scheduled. We have sent a confirmation to your WhatsApp.</p>
-                    <Link href="/dashboard" className="inline-block px-8 py-3 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-full transition-all">
-                        ✅ Lihat Riwayat Pesanan
-                    </Link>
-                </div>
-            </main>
-        );
+    const token = localStorage.getItem("token");
+    if (!token) {
+      router.push("/login?redirect=/book");
+      return;
     }
 
+    // Validasi: untuk home service harus pilih tier harga; untuk barbershop harus pilih service
+    if (serviceType === "home" && !selectedHomePricing) {
+      setError("Pilih jumlah orang untuk layanan Home Service.");
+      return;
+    }
+    if (serviceType === "barbershop" && !selectedService) {
+      setError("Pilih layanan terlebih dahulu.");
+      return;
+    }
+    if (!selectedBarber || !selectedSlot) {
+      setError("Lengkapi semua pilihan yang diperlukan.");
+      return;
+    }
+    if (serviceType === "home" && !customerAddress.trim()) {
+      setError("Alamat wajib diisi untuk Home Service.");
+      return;
+    }
+
+    // Untuk Home Service, cari service ID yang sesuai dari DB berdasarkan jumlah orang
+    let serviceIdToSend = selectedService;
+    if (serviceType === "home" && selectedHomePricing) {
+      // Cari service di DB yang namanya cocok
+      const homeServices = await fetch("/api/services?type=home").then(r => r.json());
+      const matchedService = homeServices.find((s: any) =>
+        s.name.toLowerCase().includes(selectedHomePricing.label.toLowerCase())
+      );
+      if (matchedService) {
+        serviceIdToSend = matchedService.id;
+      } else {
+        setError("Gagal menemukan data layanan home service. Coba refresh halaman.");
+        return;
+      }
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/bookings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          barberId: selectedBarber,
+          serviceId: serviceIdToSend,
+          serviceType,
+          startTime: selectedSlot,
+          customerAddress: serviceType === "home" ? customerAddress : undefined
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        router.push("/login?redirect=/book");
+        return;
+      }
+
+      if (!res.ok) throw new Error(data.message || "Gagal membuat pesanan.");
+      setSuccess(true);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Hitung harga yang akan ditampilkan
+  const selectedServicePrice = serviceType === "home"
+    ? selectedHomePricing?.price
+    : services.find(s => s.id === selectedService)?.price;
+
+  if (success) {
     return (
-        <main className="min-h-screen pt-24 pb-12 px-6 bg-neutral-950 text-white">
-            <div className="max-w-3xl mx-auto">
-                <div className="mb-10 text-center">
-                    <button onClick={() => router.push('/dashboard')} className="text-amber-500 hover:underline text-sm font-medium mb-4 inline-block">&larr; Kembali ke Dashboard</button>
-                    <h1 className="text-4xl md:text-5xl font-bold tracking-tight">Reserve a <span className="gradient-text">Seat</span></h1>
-                    <p className="text-neutral-400 mt-2">Fill in your details below to schedule an appointment.</p>
-                </div>
-
-                {error && (
-                    <div className="bg-red-500/10 border border-red-500/20 text-red-500 px-4 py-3 rounded-lg text-sm text-center mb-8">
-                        {error}
-                    </div>
-                )}
-
-                <div className="glass p-8 rounded-3xl shadow-xl">
-                    {/* Tampilkan error jika data awal gagal dimuat */}
-                {fetchError && (
-                    <div className="bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 px-4 py-3 rounded-lg text-sm mb-6">
-                        ⚠️ {fetchError}
-                    </div>
-                )}
-
-                <form onSubmit={handleBooking} className="space-y-8">
-                        {/* Service & Barber Selection */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-neutral-300">Select Service</label>
-                                <select
-                                    value={selectedService}
-                                    onChange={(e) => setSelectedService(e.target.value)}
-                                    className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                    required
-                                >
-                                    <option value="" disabled>Choose a service</option>
-                                    {services.map(s => (
-                                        <option key={s.id} value={s.id}>{s.name} - ${s.price}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium text-neutral-300">Select Barber</label>
-                                <select
-                                    value={selectedBarber}
-                                    onChange={(e) => setSelectedBarber(e.target.value)}
-                                    className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                    required
-                                >
-                                    <option value="" disabled>Choose your barber</option>
-                                    {barbers.map(b => (
-                                        <option key={b.id} value={b.id}>{b.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-
-                        {/* Service Type */}
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-neutral-300">Service Type</label>
-                            <div className="grid grid-cols-2 gap-4">
-                                <button
-                                    type="button"
-                                    onClick={() => setServiceType("barbershop")}
-                                    className={`py-3 rounded-lg border text-sm font-medium transition-all ${serviceType === "barbershop" ? "bg-amber-500/10 border-amber-500 text-amber-500" : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:border-neutral-700"}`}
-                                >
-                                    At Barbershop
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setServiceType("home")}
-                                    className={`py-3 rounded-lg border text-sm font-medium transition-all ${serviceType === "home" ? "bg-amber-500/10 border-amber-500 text-amber-500" : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:border-neutral-700"}`}
-                                >
-                                    Home Service
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Address (If Home Service) */}
-                        {serviceType === "home" && (
-                            <div className="space-y-2 animate-fade-in transition-all">
-                                <label className="text-sm font-medium text-neutral-300">Home Address</label>
-                                <textarea
-                                    value={customerAddress}
-                                    onChange={(e) => setCustomerAddress(e.target.value)}
-                                    placeholder="Enter your full address"
-                                    className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-amber-500 min-h-[100px]"
-                                    required
-                                />
-                            </div>
-                        )}
-
-                        <div className="border-t border-neutral-800 my-8"></div>
-
-                        {/* Date Selection */}
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-neutral-300">Select Date</label>
-                            <input
-                                type="date"
-                                value={date}
-                                onChange={(e) => setDate(e.target.value)}
-                                min={new Date().toISOString().split('T')[0]}
-                                className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                                required
-                            />
-                        </div>
-
-                        {/* Time Slot Selection */}
-                        {date && selectedBarber && (
-                            <div className="space-y-3">
-                                <label className="text-sm font-medium text-neutral-300">Available Time Slots</label>
-                                {fetchingSlots ? (
-                                    <div className="text-neutral-500 text-sm py-4">Checking availability...</div>
-                                ) : availableSlots.length > 0 ? (
-                                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-                                        {availableSlots.map((slot, i) => {
-                                            const dateObj = new Date(slot);
-                                            const timeString = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                                            return (
-                                                <button
-                                                    key={i}
-                                                    type="button"
-                                                    onClick={() => setSelectedSlot(slot)}
-                                                    className={`py-2 text-sm rounded-lg border transition-all ${selectedSlot === slot
-                                                            ? "bg-amber-500 text-neutral-950 border-amber-500 font-semibold"
-                                                            : "bg-neutral-900 border-neutral-800 hover:border-amber-500/50 text-neutral-300 hover:text-amber-500"
-                                                        }`}
-                                                >
-                                                    {timeString}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                ) : (
-                                    <div className="text-red-400 text-sm py-4 bg-red-500/10 px-4 rounded-lg border border-red-500/20">
-                                        No slots available for this date. Please select another date or barber.
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Submit & Cancel */}
-                        <div className="flex flex-col sm:flex-row gap-3 mt-8">
-                            <button
-                                type="button"
-                                onClick={() => router.push('/dashboard')}
-                                className="w-full sm:w-auto px-8 py-4 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white text-base font-medium rounded-xl transition-all border border-neutral-800 hover:border-neutral-700"
-                            >
-                                Batal
-                            </button>
-                            <button
-                                type="submit"
-                                disabled={loading || !selectedSlot}
-                                className="flex-1 py-4 bg-amber-500 hover:bg-amber-400 text-neutral-950 text-lg font-bold rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(245,158,11,0.15)]"
-                            >
-                                {loading ? "Processing..." : "✂️ Konfirmasi Booking"}
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </main>
+      <main className="min-h-screen flex items-center justify-center p-6 bg-neutral-950 text-white">
+        <div className="glass max-w-lg w-full p-10 rounded-3xl text-center space-y-6">
+          <div className="w-20 h-20 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">✅</div>
+          <h2 className="text-3xl font-bold">Booking Terkonfirmasi!</h2>
+          <p className="text-neutral-400">Pesanan Anda berhasil dibuat. Konfirmasi sudah dikirim ke WhatsApp Anda.</p>
+          {selectedServicePrice && (
+            <p className="text-2xl font-bold text-amber-500">{formatRupiah(selectedServicePrice)}</p>
+          )}
+          <button onClick={() => router.push("/dashboard")}
+            className="inline-block px-8 py-3 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-full transition-all">
+            Lihat Riwayat Pesanan
+          </button>
+        </div>
+      </main>
     );
+  }
+
+  return (
+    <main className="min-h-screen pt-24 pb-16 px-4 bg-neutral-950 text-white">
+      <div className="max-w-2xl mx-auto">
+
+        {/* Back & Title */}
+        <div className="mb-8">
+          <button onClick={() => router.push("/dashboard")} className="text-amber-500 hover:underline text-sm font-medium mb-4 inline-block">
+            ← Kembali ke Dashboard
+          </button>
+          <h1 className="text-3xl font-bold tracking-tight">Buat <span className="text-amber-500">Pesanan</span> Baru</h1>
+          <p className="text-neutral-400 mt-1 text-sm">Pilih barber, layanan, dan waktu yang sesuai.</p>
+        </div>
+
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-3 rounded-lg text-sm mb-6">
+            {error}
+          </div>
+        )}
+        {fetchError && (
+          <div className="bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 px-4 py-3 rounded-lg text-sm mb-6">
+            ⚠️ {fetchError}
+          </div>
+        )}
+
+        <form onSubmit={handleBooking} className="space-y-6">
+          {/* === STEP 1: Pilih Tipe Layanan === */}
+          <div className="glass p-6 rounded-2xl border border-neutral-800/50">
+            <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mb-4">1. Tipe Layanan</h2>
+            <div className="grid grid-cols-2 gap-3">
+              <button type="button" onClick={() => setServiceType("barbershop")}
+                className={`py-4 rounded-xl border text-sm font-semibold transition-all ${serviceType === "barbershop" ? "bg-amber-500/10 border-amber-500 text-amber-500" : "bg-neutral-900/50 border-neutral-800 text-neutral-400 hover:border-neutral-700"}`}>
+                💈 Di Barbershop
+              </button>
+              <button type="button" onClick={() => setServiceType("home")}
+                className={`py-4 rounded-xl border text-sm font-semibold transition-all ${serviceType === "home" ? "bg-amber-500/10 border-amber-500 text-amber-500" : "bg-neutral-900/50 border-neutral-800 text-neutral-400 hover:border-neutral-700"}`}>
+                🏠 Home Service
+              </button>
+            </div>
+          </div>
+
+          {/* === STEP 2: Pilih Layanan & Harga === */}
+          <div className="glass p-6 rounded-2xl border border-neutral-800/50">
+            <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mb-4">
+              2. Pilih Layanan {serviceType === "home" ? "Home Service" : "Barbershop"}
+            </h2>
+
+            {/* Barbershop: dropdown */}
+            {serviceType === "barbershop" && (
+              <div className="space-y-3">
+                {services.length === 0 ? (
+                  <p className="text-neutral-500 text-sm">Memuat layanan...</p>
+                ) : (
+                  services.map(s => {
+                    const displayName = s.name.replace("BARBER | ", "");
+                    return (
+                      <button type="button" key={s.id} onClick={() => setSelectedService(s.id)}
+                        className={`w-full flex justify-between items-center p-4 rounded-xl border text-sm font-medium transition-all ${selectedService === s.id ? "bg-amber-500/10 border-amber-500 text-amber-400" : "bg-neutral-900/50 border-neutral-800 text-neutral-300 hover:border-amber-500/40"}`}>
+                        <span className="flex items-center gap-3">
+                          <span className="text-xl">✂️</span>
+                          <span className="font-semibold">{displayName}</span>
+                        </span>
+                        <span className="font-bold text-base">{formatRupiah(s.price)}</span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
+            {/* Home Service: kartu harga paket */}
+            {serviceType === "home" && (
+              <div className="space-y-3">
+                {/* Info banner */}
+                <div className="bg-blue-500/10 border border-blue-500/20 text-blue-300 px-4 py-2 rounded-lg text-xs">
+                  💡 Harga paket sudah termasuk biaya perjalanan barber ke rumah Anda.
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {HOME_PRICING.map((tier) => (
+                    <button type="button" key={tier.people} onClick={() => setSelectedHomePricing(tier)}
+                      className={`p-4 rounded-xl border text-left transition-all ${selectedHomePricing?.people === tier.people ? "bg-amber-500/10 border-amber-500" : "bg-neutral-900/50 border-neutral-800 hover:border-amber-500/40"}`}>
+                      <p className="text-xs text-neutral-500 uppercase tracking-wider font-semibold mb-1">👥 {tier.label}</p>
+                      <p className={`text-xl font-bold ${selectedHomePricing?.people === tier.people ? "text-amber-400" : "text-white"}`}>
+                        {formatRupiah(tier.price)}
+                      </p>
+                      <p className="text-[10px] text-neutral-600 mt-1">± {tier.duration} menit</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* === STEP 3: Pilih Barber === */}
+          <div className="glass p-6 rounded-2xl border border-neutral-800/50">
+            <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mb-4">3. Pilih Barber</h2>
+            <div className="space-y-3">
+              {barbers.length === 0 ? (
+                <p className="text-neutral-500 text-sm">Memuat barber...</p>
+              ) : (
+                barbers.map(b => (
+                  <button type="button" key={b.id} onClick={() => setSelectedBarber(b.id)}
+                    className={`w-full flex items-center gap-4 p-4 rounded-xl border text-sm font-medium transition-all ${selectedBarber === b.id ? "bg-amber-500/10 border-amber-500 text-amber-400" : "bg-neutral-900/50 border-neutral-800 text-neutral-300 hover:border-amber-500/40"}`}>
+                    <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center text-xl flex-shrink-0">💇</div>
+                    <div className="text-left">
+                      <p className="font-semibold">{b.name}</p>
+                      {b.specialty && <p className="text-xs text-neutral-500">✨ {b.specialty}</p>}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* === STEP 4: Alamat (hanya untuk Home Service) === */}
+          {serviceType === "home" && (
+            <div className="glass p-6 rounded-2xl border border-neutral-800/50">
+              <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mb-4">4. Alamat Tujuan</h2>
+              <textarea
+                value={customerAddress}
+                onChange={e => setCustomerAddress(e.target.value)}
+                placeholder="Masukkan alamat lengkap Anda (termasuk nama jalan, nomor rumah, RT/RW, Kelurahan)..."
+                className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-amber-500 min-h-[100px] text-sm"
+                required
+              />
+            </div>
+          )}
+
+          {/* === STEP 5: Pilih Tanggal & Waktu === */}
+          <div className="glass p-6 rounded-2xl border border-neutral-800/50">
+            <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mb-4">
+              {serviceType === "home" ? "5" : "4"}. Pilih Tanggal & Waktu
+            </h2>
+
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              min={new Date().toISOString().split("T")[0]}
+              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-amber-500 mb-4"
+              required
+            />
+
+            {date && selectedBarber && (
+              fetchingSlots ? (
+                <p className="text-neutral-500 text-sm">🔍 Mengecek ketersediaan slot...</p>
+              ) : availableSlots.length > 0 ? (
+                <div>
+                  <p className="text-xs text-neutral-500 mb-3">Jam kerja: 10:00 – 20:30 WIB</p>
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+                    {availableSlots.map((slot, i) => {
+                      const time = new Date(slot).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" });
+                      return (
+                        <button key={i} type="button" onClick={() => setSelectedSlot(slot)}
+                          className={`py-2 text-sm rounded-lg border transition-all ${selectedSlot === slot ? "bg-amber-500 text-neutral-950 border-amber-500 font-bold" : "bg-neutral-900 border-neutral-800 hover:border-amber-500/50 text-neutral-300 hover:text-amber-400"}`}>
+                          {time}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-red-400 text-sm bg-red-500/10 px-4 py-3 rounded-lg border border-red-500/20">
+                  Tidak ada slot tersedia untuk tanggal ini. Pilih tanggal atau barber lain.
+                </p>
+              )
+            )}
+          </div>
+
+          {/* === RINGKASAN + TOMBOL === */}
+          {(selectedService || selectedHomePricing) && selectedBarber && selectedSlot && (
+            <div className="glass p-5 rounded-2xl border border-amber-500/20 bg-amber-500/5">
+              <h3 className="text-sm font-semibold text-amber-500 mb-3">📋 Ringkasan Pesanan</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-neutral-400">Barber</span>
+                  <span className="font-medium">{barbers.find(b => b.id === selectedBarber)?.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-400">Layanan</span>
+                  <span className="font-medium">
+                    {serviceType === "home"
+                      ? `Home Service (${selectedHomePricing?.label})`
+                      : services.find(s => s.id === selectedService)?.name.replace("BARBER | ", "")}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-400">Waktu</span>
+                  <span className="font-medium">
+                    {new Date(selectedSlot).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" })}
+                  </span>
+                </div>
+                <div className="flex justify-between border-t border-amber-500/20 pt-2 mt-2">
+                  <span className="font-bold text-white">Total</span>
+                  <span className="font-bold text-amber-400 text-lg">
+                    {formatRupiah(selectedServicePrice || 0)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Tombol Submit & Batal */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button type="button" onClick={() => router.push("/dashboard")}
+              className="w-full sm:w-auto px-8 py-4 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 font-medium rounded-xl transition-all border border-neutral-800">
+              Batal
+            </button>
+            <button type="submit" disabled={loading || !selectedSlot || (serviceType === "barbershop" ? !selectedService : !selectedHomePricing)}
+              className="flex-1 py-4 bg-amber-500 hover:bg-amber-400 text-neutral-950 text-base font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+              {loading ? "Memproses..." : `✂️ Konfirmasi Booking${selectedServicePrice ? " — " + formatRupiah(selectedServicePrice) : ""}`}
+            </button>
+          </div>
+        </form>
+      </div>
+    </main>
+  );
 }
