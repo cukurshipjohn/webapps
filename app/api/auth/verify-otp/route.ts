@@ -69,7 +69,10 @@ export async function POST(request: Request) {
             user: { 
                 id: user.id, 
                 phoneNumber: user.phone_number,
-                name: user.name 
+                name: user.name,
+                address: user.address,
+                photoUrl: user.photo_url,
+                hobbies: user.hobbies
             },
             requireProfileCompletion: !user.name // Jika name null/kosong, berarti user baru
         });

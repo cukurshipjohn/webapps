@@ -27,16 +27,34 @@ export default function DashboardPage() {
       return;
     }
 
-    const userData = JSON.parse(userStr);
-    if (!userData.name) {
+    const cachedUser = JSON.parse(userStr);
+    if (!cachedUser.name) {
       router.push("/profile/complete");
       return;
     }
 
-    setUser(userData);
+    // Tampilkan dulu data dari localStorage agar UI tidak kosong
+    setUser(cachedUser);
 
+    const token = localStorage.getItem("token");
+
+    // Lalu fetch data TERBARU dari database untuk memastikan foto, alamat, dsb selalu up-to-date
+    fetch("/api/profile/me", {
+      headers: { "Authorization": `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(freshUser => {
+        if (freshUser && freshUser.id) {
+          // Update state dan localStorage dengan data terbaru
+          setUser(freshUser);
+          localStorage.setItem("user", JSON.stringify(freshUser));
+        }
+      })
+      .catch(err => console.error("Gagal refresh profil dari DB:", err));
+
+    // Fetch history & stats paralel
     fetch("/api/profile/history", {
-      headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+      headers: { "Authorization": `Bearer ${token}` }
     })
       .then(res => res.json())
       .then(data => {
@@ -48,6 +66,7 @@ export default function DashboardPage() {
       .catch(err => console.error("Gagal load history:", err))
       .finally(() => setLoading(false));
   }, [router]);
+
 
   const handleEditOpen = () => {
     setEditData({
