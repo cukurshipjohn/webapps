@@ -18,8 +18,14 @@ export default function Home() {
           <span className="gradient-text">CukurShip.</span>
         </h1>
 
-        <p className="text-lg md:text-xl text-neutral-400 mb-10 max-w-2xl mx-auto font-light">
-          "Moro Lungguh Mulih Ngguanteng john" - Pesan jadwal cukur Anda sekarang dan rasakan pengalaman potong rambut terbaik di kelasnya.
+        {/* Slogan - terpisah dan menonjol */}
+        <p className="text-base md:text-lg text-amber-400/90 font-medium italic mb-3 max-w-xl mx-auto tracking-wide">
+          ✦ &quot;Moro Lungguh Mulih Ngguanteng John&quot; ✦
+        </p>
+
+        {/* Deskripsi - terpisah di bawah slogan */}
+        <p className="text-sm md:text-base text-neutral-500 mb-10 max-w-xl mx-auto font-light leading-relaxed">
+          Pesan jadwal cukur Anda sekarang dan rasakan pengalaman potong rambut terbaik di kelasnya.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 w-full justify-center items-center">
