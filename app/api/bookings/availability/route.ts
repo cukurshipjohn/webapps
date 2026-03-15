@@ -15,18 +15,18 @@ export async function GET(request: Request) {
     }
 
     try {
-        const selectedDate = new Date(date);
-        selectedDate.setHours(0, 0, 0, 0);
-        const nextDay = new Date(selectedDate);
-        nextDay.setDate(selectedDate.getDate() + 1);
+        // === TIMEZONE FIX: Gunakan WIB (Asia/Jakarta, UTC+7) ===
+        // Buat waktu awal dan akhir hari dalam WIB agar query ke DB benar
+        const startOfDayWIB = new Date(`${date}T00:00:00+07:00`);
+        const endOfDayWIB = new Date(`${date}T23:59:59+07:00`);
 
-        // Fetch all bookings for this barber on the selected date
+        // Fetch semua booking barber ini pada tanggal yang dipilih
         const { data: existingBookings, error } = await supabaseAdmin
             .from('bookings')
             .select('start_time, end_time')
             .eq('barber_id', barberId)
-            .gte('start_time', selectedDate.toISOString())
-            .lt('start_time', nextDay.toISOString());
+            .gte('start_time', startOfDayWIB.toISOString())
+            .lt('start_time', endOfDayWIB.toISOString());
 
         if (error) throw error;
 
@@ -38,18 +38,19 @@ export async function GET(request: Request) {
         const gap = serviceType === 'home' ? DURATION_HOME_SERVICE : DURATION_BARBERSHOP;
         const availableSlots: Date[] = [];
 
-        let currentTimeSlot = new Date(selectedDate);
-        currentTimeSlot.setHours(10, 0, 0, 0); // Open at 10 AM
+        // Buat slot mulai jam 10:00 WIB sampai 20:30 WIB
+        // Menggunakan format ISO dengan offset +07:00 agar tidak terpengaruh timezone server
+        const openTimeWIB = new Date(`${date}T10:00:00+07:00`);  // Jam buka 10:00 WIB
+        const closeTimeWIB = new Date(`${date}T20:30:00+07:00`); // Jam tutup 20:30 WIB
 
-        const endTimeLimit = new Date(selectedDate);
-        endTimeLimit.setHours(20, 30, 0, 0); // Close at 8:30 PM
+        let currentTimeSlot = new Date(openTimeWIB);
 
-        while (currentTimeSlot <= endTimeLimit) {
+        while (currentTimeSlot <= closeTimeWIB) {
             const slotEnd = new Date(currentTimeSlot.getTime() + gap * 60000);
 
             let isConflict = false;
             for (const booking of bookedSlots) {
-                // A conflict exists if slot overlaps any existing booking
+                // Konflik jika slot ini overlap dengan booking yang ada
                 if (currentTimeSlot < booking.end && slotEnd > booking.start) {
                     isConflict = true;
                     break;
@@ -60,7 +61,7 @@ export async function GET(request: Request) {
                 availableSlots.push(new Date(currentTimeSlot));
             }
 
-            // Advance 30 minutes per slot
+            // Maju 30 menit per slot
             currentTimeSlot.setMinutes(currentTimeSlot.getMinutes() + 30);
         }
 
