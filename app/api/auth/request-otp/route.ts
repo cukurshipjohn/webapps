@@ -29,15 +29,15 @@ export async function POST(request: Request) {
 
         // 1. Generate OTP 6 digit
         const otpCode = generateOTP();
-        const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 menit dari sekarang
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 menit dari sekarang
 
-        // 2. Hapus OTP lama yang kadaluarsa untuk nomor ini
+        // 2. Hapus SEMUA OTP sebelumnya (expired maupun aktif) untuk nomor ini
+        //    agar tidak ada sesi lama yang masih bisa dipakai atau menyebabkan konflik
         await supabaseAdmin
             .from('otp_sessions')
             .delete()
             .eq('phone_number', phoneNumber)
-            .eq('used', false)
-            .lt('expires_at', new Date().toISOString());
+            .eq('used', false);
 
         // 3. Simpan OTP baru ke Supabase
         const { error: insertError } = await supabaseAdmin

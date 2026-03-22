@@ -56,11 +56,20 @@ export default function AdminLoginContent() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
+
+      // Selalu tampilkan error dari API jika response tidak OK
+      if (!res.ok) {
+        throw new Error(data.message || `Verifikasi gagal (${res.status}). Coba minta OTP baru.`);
+      }
+
+      // Guard: pastikan data.user ada (unexpected server response)
+      if (!data.user || !data.user.role) {
+        throw new Error("Respons server tidak valid. Coba lagi atau hubungi admin.");
+      }
 
       // Pastikan yang login BUKAN customer biasa
       if (data.user.role === 'customer') {
-          throw new Error("Akses Ditolak: Halaman ini khusus untuk Staff/Admin.");
+        throw new Error("Akses Ditolak: Halaman ini khusus untuk Staff/Admin.");
       }
 
       localStorage.setItem("user", JSON.stringify(data.user));
@@ -68,16 +77,18 @@ export default function AdminLoginContent() {
       router.push(redirectParams || "/admin");
       
     } catch (err: any) {
-      setError(err.message || "Kode OTP tidak valid.");
-      // Jika errornya dari role denial (Akses Ditolak), kembalikan ke input awal biar bisa ganti nomor
-      if(err.message && err.message.includes('Akses Ditolak')){
-          setStep("phone");
-          setOtpCode("");
+      console.error("[AdminLogin] Verify OTP failed:", err);
+      const message = err.message || "Kode OTP tidak valid. Coba lagi.";
+      setError(message);
+      if (message.includes('Akses Ditolak')) {
+        setStep("phone");
+        setOtpCode("");
       }
     } finally {
       setLoading(false);
     }
   };
+
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6 relative">
