@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createTenantClient } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { getUserFromToken, requireRole } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
@@ -108,6 +109,13 @@ export async function GET(request: NextRequest) {
         const upcoming_bookings = results[5].data || [];
         const barbers_list = results[6].data || [];
 
+        // --- 4. Fetch tenant info (slug & shop_name) ---
+        const { data: tenantInfo } = await supabaseAdmin
+            .from('tenants')
+            .select('slug, shop_name')
+            .eq('id', user.tenant_id!)
+            .single();
+
         // Build Final JSON
         const responseData = {
             bookings_today,
@@ -116,7 +124,9 @@ export async function GET(request: NextRequest) {
             revenue_this_month,
             active_barbers: active_barbers_count,
             upcoming_bookings,
-            barbers_list
+            barbers_list,
+            slug: tenantInfo?.slug || null,
+            shop_name: tenantInfo?.shop_name || null,
         };
         
         return NextResponse.json(responseData);

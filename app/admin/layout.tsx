@@ -8,9 +8,31 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [shopName, setShopName] = useState("John CukurShip");
+  const [shopName, setShopName] = useState("...");
+  const [shopSlug, setShopSlug] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  // In a real app, you might fetch the actual Shop/Tenant name here
+  const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id";
+
+  useEffect(() => {
+    fetch("/api/admin/overview")
+      .then(r => r.json())
+      .then(d => {
+        if (d.shop_name) setShopName(d.shop_name);
+        if (d.slug) setShopSlug(d.slug);
+      })
+      .catch(() => {});
+  }, []);
+
+  const shopUrl = shopSlug ? `https://${shopSlug}.${appDomain}` : null;
+
+  const handleCopy = () => {
+    if (!shopUrl) return;
+    navigator.clipboard.writeText(shopUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   const handleLogout = async () => {
     try {
@@ -18,7 +40,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       router.push('/admin/login');
     } catch (e) {
       console.error(e);
-      // Fallback
       router.push('/admin/login');
     }
   };
@@ -41,6 +62,34 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             {shopName}
           </h2>
           <p className="text-xs text-neutral-500 font-mono mt-1 tracking-widest">ADMIN PANEL</p>
+
+          {/* Shop URL Card */}
+          {shopUrl && (
+            <div className="mt-3 p-2.5 bg-neutral-900 border border-neutral-800 rounded-xl space-y-1.5">
+              <p className="text-[10px] text-neutral-500 font-medium uppercase tracking-wider">Link Halaman Toko</p>
+              <p className="text-xs font-mono text-primary truncate">{shopUrl}</p>
+              <div className="flex gap-1.5">
+                <a
+                  href={shopUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 py-1.5 text-center text-[11px] font-semibold bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 rounded-lg transition-all"
+                >
+                  ↗ Buka
+                </a>
+                <button
+                  onClick={handleCopy}
+                  className={`flex-1 py-1.5 text-center text-[11px] font-semibold border rounded-lg transition-all
+                    ${copied
+                      ? "bg-green-500/15 text-green-400 border-green-500/30"
+                      : "bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border-neutral-700"
+                    }`}
+                >
+                  {copied ? "✓ Tersalin!" : "⧉ Copy"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         
         <nav className="flex-1 py-6 px-4 space-y-2 relative">
@@ -72,6 +121,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </button>
         </div>
       </aside>
+
 
       {/* Header & Mobile Content Area */}
       <div className="flex-1 flex flex-col min-h-screen max-w-full overflow-x-hidden">
