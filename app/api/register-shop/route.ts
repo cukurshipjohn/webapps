@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import jwt from 'jsonwebtoken';
 
 const SLUG_REGEX = /^[a-z0-9-]+$/;
-const ROOT_DOMAIN = 'cukurship.id';
+const ROOT_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || 'cukurship.id';
 
 export async function POST(request: NextRequest) {
     try {

@@ -177,7 +177,7 @@ Peringatan: Tidak bisa dihapus jika ada pesanan (booking) yang masih aktif.`)) {
         <header className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-8 gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
-               <Link href="/dashboard" className="text-primary hover:text-primary-hover text-sm font-medium transition-colors">← Kembali</Link>
+               <Link href="/admin" className="text-primary hover:text-primary-hover text-sm font-medium transition-colors">← Kembali</Link>
                <span className="text-neutral-600 text-sm">•</span>
                <span className="text-neutral-400 text-sm font-mono uppercase tracking-wider">Admin Panel</span>
             </div>

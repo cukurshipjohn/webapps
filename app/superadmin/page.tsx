@@ -8,6 +8,8 @@ function formatRupiah(n: number) {
     return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(n);
 }
 
+const APP_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id";
+
 function StatCard({ label, value, icon, sub, color = "cyan" }: { label: string; value: string | number; icon: string; sub?: string; color?: string }) {
     const colors: Record<string, string> = {
         cyan: "border-cyan-500/20 shadow-cyan-500/5",
@@ -120,7 +122,7 @@ export default function SuperadminOverview() {
                                         <tr key={t.id} className="border-b border-neutral-800/30 hover:bg-neutral-800/20 transition-colors">
                                             <td className="px-6 py-3">
                                                 <p className="text-white font-medium">{t.shop_name}</p>
-                                                <p className="text-neutral-500 text-xs font-mono">{t.slug}.cukurship.id</p>
+                                                <p className="text-neutral-500 text-xs font-mono">{t.slug}.{APP_DOMAIN}</p>
                                             </td>
                                             <td className="px-6 py-3">
                                                 <span className="capitalize text-cyan-400 text-xs font-bold bg-cyan-400/10 px-2 py-1 rounded-lg">{t.plan}</span>
@@ -188,7 +190,7 @@ export default function SuperadminOverview() {
                         {newestTenants.map((t: any) => (
                             <tr key={t.id} className="border-b border-neutral-800/30 hover:bg-neutral-800/20 transition-colors">
                                 <td className="px-6 py-3 text-white font-medium">{t.shop_name}</td>
-                                <td className="px-6 py-3 font-mono text-xs text-cyan-400/70">{t.slug}.cukurship.id</td>
+                                <td className="px-6 py-3 font-mono text-xs text-cyan-400/70">{t.slug}.{APP_DOMAIN}</td>
                                 <td className="px-6 py-3">
                                     <PlanBadge plan={t.plan} isActive={t.is_active} expiresAt={t.plan_expires_at} />
                                 </td>

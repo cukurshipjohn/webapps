@@ -47,7 +47,7 @@ export default function SubscriptionExpired() {
                 </p>
 
                 <Link href="/" className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors">
-                    ← Kembali ke cukurship.id
+                    ← Kembali ke {process.env.NEXT_PUBLIC_APP_DOMAIN || "beranda"}
                 </Link>
             </div>
         </main>

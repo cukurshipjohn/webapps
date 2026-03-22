@@ -12,6 +12,7 @@ function PlanBadge({ plan, isActive, expiresAt }: { plan: string; isActive: bool
 }
 
 const PLAN_OPTIONS = ["", "trial", "starter", "pro", "business"];
+const APP_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id";
 
 export default function SuperadminTenants() {
     const router = useRouter();
@@ -163,9 +164,9 @@ export default function SuperadminTenants() {
                                         <p className="text-neutral-600 text-xs">{new Date(t.created_at).toLocaleDateString("id-ID")}</p>
                                     </td>
                                     <td className="px-5 py-4 font-mono text-xs text-cyan-400/70">
-                                        <a href={`https://${t.slug}.cukurship.id`} target="_blank" rel="noopener"
+                                        <a href={`https://${t.slug}.${APP_DOMAIN}`} target="_blank" rel="noopener"
                                             className="hover:text-cyan-400 transition-colors">
-                                            {t.slug}.cukurship.id ↗
+                                            {t.slug}.{APP_DOMAIN} ↗
                                         </a>
                                     </td>
                                     <td className="px-5 py-4">
