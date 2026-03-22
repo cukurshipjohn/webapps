@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getTenantFromRequest } from '@/lib/tenant-context';
 import jwt from 'jsonwebtoken';
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
     try {
         const authHeader = request.headers.get('authorization');
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -19,8 +20,11 @@ export async function GET(request: Request) {
 
         const userId = decoded.id;
 
-        // Fetch user's bookings, joined with barbers and services
-        const { data: bookings, error } = await supabaseAdmin
+        // Ambil tenant dari header (di-inject oleh middleware)
+        const { tenantId } = getTenantFromRequest(request);
+
+        // Fetch user's bookings, filtered by tenant if available
+        let query = supabaseAdmin
             .from('bookings')
             .select(`
                 id,
@@ -33,10 +37,15 @@ export async function GET(request: Request) {
             .eq('user_id', userId)
             .order('start_time', { ascending: false });
 
+        if (tenantId) {
+            query = query.eq('tenant_id', tenantId);
+        }
+
+        const { data: bookings, error } = await query;
         if (error) throw error;
 
         // Calculate statistics
-        const pastBookings = bookings?.filter(b => new Date(b.start_time) < new Date() || b.status === 'completed') || [];
+        const pastBookings = bookings?.filter((b: any) => new Date(b.start_time) < new Date() || b.status === 'completed') || [];
         const totalHaircuts = pastBookings.length;
         
         let totalSpent = 0;

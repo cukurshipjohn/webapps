@@ -40,3 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 serviceAccountKey.json
+
+# temporary test scripts
+test_jwt.js
+test_jwt2.js
+verify_secret.js

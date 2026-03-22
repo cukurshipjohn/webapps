@@ -8,10 +8,23 @@ function generateOTP(): string {
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { phoneNumber } = body;
+        const { phoneNumber, isAdminLogin } = body;
 
         if (!phoneNumber) {
             return NextResponse.json({ message: 'Nomor HP diperlukan.' }, { status: 400 });
+        }
+        
+        // Strict Admin Portal Check: Prevent sending OTP if not an admin
+        if (isAdminLogin) {
+            const { data: userData, error: userError } = await supabaseAdmin
+                .from('users')
+                .select('role')
+                .eq('phone_number', phoneNumber)
+                .single();
+
+            if (userError || !userData || !['owner', 'superadmin'].includes(userData.role)) {
+                return NextResponse.json({ message: 'Akses Ditolak: Nomor ini tidak terdaftar sebagai Admin/Tenant.' }, { status: 403 });
+            }
         }
 
         // 1. Generate OTP 6 digit

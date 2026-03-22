@@ -22,7 +22,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const userStr = localStorage.getItem("user");
-    if (!userStr || !localStorage.getItem("token")) {
+    if (!userStr) {
       router.push("/login");
       return;
     }
@@ -36,12 +36,8 @@ export default function DashboardPage() {
     // Tampilkan dulu data dari localStorage agar UI tidak kosong
     setUser(cachedUser);
 
-    const token = localStorage.getItem("token");
-
     // Lalu fetch data TERBARU dari database untuk memastikan foto, alamat, dsb selalu up-to-date
-    fetch("/api/profile/me", {
-      headers: { "Authorization": `Bearer ${token}` }
-    })
+    fetch("/api/profile/me")
       .then(res => res.json())
       .then(freshUser => {
         if (freshUser && freshUser.id) {
@@ -53,9 +49,7 @@ export default function DashboardPage() {
       .catch(err => console.error("Gagal refresh profil dari DB:", err));
 
     // Fetch history & stats paralel
-    fetch("/api/profile/history", {
-      headers: { "Authorization": `Bearer ${token}` }
-    })
+    fetch("/api/profile/history")
       .then(res => res.json())
       .then(data => {
         if (data.stats) {
@@ -88,7 +82,6 @@ export default function DashboardPage() {
       formData.append('file', file);
       const res = await fetch('/api/profile/upload', {
         method: 'POST',
-        headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` },
         body: formData
       });
       const data = await res.json();
@@ -108,8 +101,7 @@ export default function DashboardPage() {
       const res = await fetch("/api/profile/complete", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${localStorage.getItem("token")}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({ name: editData.name, address: editData.address, hobbies: editData.hobbies, photoUrl: editData.photoUrl })
       });
@@ -125,29 +117,31 @@ export default function DashboardPage() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (e) {}
     localStorage.removeItem("user");
     router.push("/login");
   };
 
   if (!user || loading) return (
-    <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center text-amber-500 gap-4">
-      <div className="w-8 h-8 border-4 border-amber-500/20 border-t-amber-500 inline-block rounded-full animate-spin" />
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center text-primary gap-4">
+      <div className="w-8 h-8 border-4 border-primary/20 border-t-primary inline-block rounded-full animate-spin" />
       <span className="text-sm font-medium tracking-wider animate-pulse">MEMUAT PROFIL...</span>
     </div>
   );
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-white pb-24">
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-amber-600/10 rounded-full blur-[120px] pointer-events-none" />
+    <main className="min-h-screen bg-background text-accent pb-24">
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
 
       <div className="max-w-2xl mx-auto relative z-10">
 
         {/* ===== TOP HEADER ===== */}
         <header className="flex justify-between items-center p-6 pt-10 pb-4">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">John<span className="text-amber-500">CukurShip</span></h1>
+            <h1 className="text-xl font-bold tracking-tight">John<span className="text-primary">CukurShip</span></h1>
             <p className="text-neutral-400 text-sm mt-0.5">Selamat datang, <span className="text-white font-medium">{user.name}</span> 👋</p>
           </div>
           <button
@@ -166,22 +160,22 @@ export default function DashboardPage() {
             {/* Profile Card */}
             <div className="glass p-6 rounded-2xl border border-neutral-800/50">
               <div className="flex justify-between items-start mb-5">
-                <h2 className="text-base font-semibold text-amber-500 flex items-center gap-2">👤 Profil Saya</h2>
-                <button onClick={handleEditOpen} className="text-xs text-amber-500 hover:text-amber-400 border border-amber-500/30 hover:border-amber-400 px-3 py-1.5 rounded-full transition-all flex items-center gap-1.5">
+                <h2 className="text-base font-semibold text-primary flex items-center gap-2">👤 Profil Saya</h2>
+                <button onClick={handleEditOpen} className="text-xs text-primary hover:text-primary-hover border border-primary/30 hover:border-primary-hover px-3 py-1.5 rounded-full transition-all flex items-center gap-1.5">
                   ✏️ Edit Profil
                 </button>
               </div>
 
               <div className="flex items-center gap-4 mb-5">
                 {user.photoUrl ? (
-                  <img src={user.photoUrl} alt="Profile" className="w-20 h-20 rounded-full object-cover border-2 border-amber-500/50 shadow-lg shadow-amber-500/10" />
+                  <img src={user.photoUrl} alt="Profile" className="w-20 h-20 rounded-full object-cover border-2 border-primary/50 shadow-lg shadow-primary/10" />
                 ) : (
                   <div className="w-20 h-20 rounded-full bg-neutral-800 border-2 border-neutral-700 flex items-center justify-center text-3xl">👤</div>
                 )}
                 <div>
                   <h3 className="font-bold text-xl">{user.name}</h3>
                   <p className="text-xs text-neutral-400 font-mono mt-1">📱 {user.phoneNumber}</p>
-                  <span className="mt-1.5 inline-block text-[10px] font-bold uppercase tracking-wider text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">Member</span>
+                  <span className="mt-1.5 inline-block text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">Member</span>
                 </div>
               </div>
 
@@ -199,14 +193,14 @@ export default function DashboardPage() {
 
             {/* Stats Card */}
             <div className="glass p-6 rounded-2xl border border-neutral-800/50">
-              <h2 className="text-base font-semibold mb-4 text-amber-500 flex items-center gap-2">🏆 Statistik Member</h2>
+              <h2 className="text-base font-semibold mb-4 text-primary flex items-center gap-2">🏆 Statistik Member</h2>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-neutral-900/50 p-4 rounded-xl border border-neutral-800/50 text-center">
                   <p className="text-3xl font-bold text-white">{stats?.totalHaircuts || 0}</p>
                   <p className="text-xs text-neutral-500 uppercase tracking-wider font-semibold mt-1">Total Cukur</p>
                 </div>
                 <div className="bg-neutral-900/50 p-4 rounded-xl border border-neutral-800/50 text-center">
-                  <p className="text-base font-bold text-amber-400 truncate">{stats?.favoriteBarber || "—"}</p>
+                  <p className="text-base font-bold text-primary-hover truncate">{stats?.favoriteBarber || "—"}</p>
                   <p className="text-xs text-neutral-500 uppercase tracking-wider font-semibold mt-1">Barber Favorit</p>
                 </div>
               </div>
@@ -218,11 +212,11 @@ export default function DashboardPage() {
         {activeTab === "home" && (
           <div className="px-4 space-y-4 animate-in fade-in duration-300">
             <div className="glass p-8 rounded-2xl border border-neutral-800/50">
-              <h2 className="text-xl font-semibold mb-3 text-amber-500 flex items-center gap-2">📅 Pesan Jadwal Baru</h2>
+              <h2 className="text-xl font-semibold mb-3 text-primary flex items-center gap-2">📅 Pesan Jadwal Baru</h2>
               <p className="text-neutral-400 mb-6 text-sm leading-relaxed">
                 Moro Lungguh Mulih Ngguanteng! Jadwalkan potong rambut dengan barber favorit Anda di barbershop atau langsung di rumah Anda.
               </p>
-              <Link href="/book" className="inline-block w-full text-center py-4 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-xl transition-all shadow-lg hover:shadow-amber-500/20 text-lg">
+              <Link href="/book" className="inline-block w-full text-center py-4 btn-primary text-background font-bold rounded-xl transition-all shadow-lg hover:shadow-primary/20 text-lg">
                 ✂️ Pesan Layanan Sekarang
               </Link>
             </div>
@@ -241,13 +235,13 @@ export default function DashboardPage() {
         {activeTab === "history" && (
           <div className="px-4 animate-in fade-in duration-300">
             <div className="glass p-6 rounded-2xl border border-neutral-800/50">
-              <h2 className="text-xl font-semibold mb-5 text-amber-500 flex items-center gap-2">📜 Riwayat Pesanan</h2>
+              <h2 className="text-xl font-semibold mb-5 text-primary flex items-center gap-2">📜 Riwayat Pesanan</h2>
               <div className="space-y-4">
                 {history.length === 0 ? (
                   <div className="py-16 flex flex-col items-center justify-center text-neutral-500 space-y-3">
                     <span className="text-5xl">💈</span>
                     <p className="text-sm">Belum ada riwayat pesanan.</p>
-                    <button onClick={() => setActiveTab("home")} className="mt-2 text-sm text-amber-500 hover:text-amber-400 border border-amber-500/30 px-4 py-2 rounded-lg transition-all">
+                    <button onClick={() => setActiveTab("home")} className="mt-2 text-sm text-primary hover:text-primary-hover border border-primary/30 px-4 py-2 rounded-lg transition-all">
                       Buat Pesanan Pertama
                     </button>
                   </div>
@@ -256,12 +250,12 @@ export default function DashboardPage() {
                     const date = new Date(booking.start_time);
                     const isUpcoming = date > new Date() && booking.status !== 'cancelled';
                     return (
-                      <div key={booking.id || index} className={`p-4 rounded-xl border ${isUpcoming ? 'bg-amber-500/5 border-amber-500/20' : 'bg-neutral-900/30 border-neutral-800/50'}`}>
+                      <div key={booking.id || index} className={`p-4 rounded-xl border ${isUpcoming ? 'bg-primary/5 border-primary/20' : 'bg-neutral-900/30 border-neutral-800/50'}`}>
                         <div className="flex justify-between items-start mb-2 gap-4">
                           <span className="font-semibold text-white">{booking.services?.name || 'Paket Cukur'}</span>
                           <div className="flex flex-col items-end gap-1">
-                            <span className="text-amber-400 font-bold whitespace-nowrap">${booking.services?.price || '-'}</span>
-                            {isUpcoming && <span className="text-[10px] uppercase tracking-wider font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-md whitespace-nowrap">Akan Datang</span>}
+                            <span className="text-primary-hover font-bold whitespace-nowrap">${booking.services?.price || '-'}</span>
+                            {isUpcoming && <span className="text-[10px] uppercase tracking-wider font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md whitespace-nowrap">Akan Datang</span>}
                           </div>
                         </div>
                         <div className="text-sm text-neutral-400 space-y-1">
@@ -290,11 +284,11 @@ export default function DashboardPage() {
           {/* Tab: Profil */}
           <button
             onClick={() => setActiveTab("profile")}
-            className={`flex flex-col items-center gap-1 py-2 px-6 rounded-xl transition-all duration-200 ${activeTab === "profile" ? "text-amber-500" : "text-neutral-500 hover:text-neutral-300"}`}
+            className={`flex flex-col items-center gap-1 py-2 px-6 rounded-xl transition-all duration-200 ${activeTab === "profile" ? "text-primary" : "text-neutral-500 hover:text-neutral-300"}`}
           >
-            <span className="text-2xl">{user.photoUrl ? <img src={user.photoUrl} alt="" className={`w-7 h-7 rounded-full object-cover ${activeTab === "profile" ? "ring-2 ring-amber-500" : "ring-1 ring-neutral-700"}`} /> : "👤"}</span>
-            <span className={`text-[10px] font-semibold uppercase tracking-wide ${activeTab === "profile" ? "text-amber-500" : ""}`}>Profil</span>
-            {activeTab === "profile" && <span className="absolute bottom-2 w-1 h-1 bg-amber-500 rounded-full" />}
+            <span className="text-2xl">{user.photoUrl ? <img src={user.photoUrl} alt="" className={`w-7 h-7 rounded-full object-cover ${activeTab === "profile" ? "ring-2 ring-primary" : "ring-1 ring-neutral-700"}`} /> : "👤"}</span>
+            <span className={`text-[10px] font-semibold uppercase tracking-wide ${activeTab === "profile" ? "text-primary" : ""}`}>Profil</span>
+            {activeTab === "profile" && <span className="absolute bottom-2 w-1 h-1 bg-primary rounded-full" />}
           </button>
 
           {/* Tab: Pesan (center - highlighted) */}
@@ -303,16 +297,16 @@ export default function DashboardPage() {
             className={`flex flex-col items-center gap-1 py-2 px-6 rounded-xl transition-all duration-200 relative`}
           >
             <span className={`text-3xl block transition-transform duration-200 ${activeTab === "home" ? "scale-110" : ""}`}>✂️</span>
-            <span className={`text-[10px] font-semibold uppercase tracking-wide ${activeTab === "home" ? "text-amber-500" : "text-neutral-500"}`}>Pesan</span>
+            <span className={`text-[10px] font-semibold uppercase tracking-wide ${activeTab === "home" ? "text-primary" : "text-neutral-500"}`}>Pesan</span>
           </button>
 
           {/* Tab: Riwayat */}
           <button
             onClick={() => setActiveTab("history")}
-            className={`flex flex-col items-center gap-1 py-2 px-6 rounded-xl transition-all duration-200 ${activeTab === "history" ? "text-amber-500" : "text-neutral-500 hover:text-neutral-300"}`}
+            className={`flex flex-col items-center gap-1 py-2 px-6 rounded-xl transition-all duration-200 ${activeTab === "history" ? "text-primary" : "text-neutral-500 hover:text-neutral-300"}`}
           >
             <span className="text-2xl">📜</span>
-            <span className={`text-[10px] font-semibold uppercase tracking-wide ${activeTab === "history" ? "text-amber-500" : ""}`}>Riwayat</span>
+            <span className={`text-[10px] font-semibold uppercase tracking-wide ${activeTab === "history" ? "text-primary" : ""}`}>Riwayat</span>
           </button>
 
         </div>
@@ -327,14 +321,14 @@ export default function DashboardPage() {
               <div>
                 <label className="block text-xs text-neutral-400 mb-1">Nama Lengkap</label>
                 <input type="text" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-amber-500" required />
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary" required />
               </div>
 
               <div>
                 <label className="block text-xs text-neutral-400 mb-2">Foto Profil</label>
                 <div className="flex items-center gap-4">
                   {editData.photoUrl ? (
-                    <img src={editData.photoUrl} alt="Preview" className="w-14 h-14 rounded-full object-cover border-2 border-amber-500/50" />
+                    <img src={editData.photoUrl} alt="Preview" className="w-14 h-14 rounded-full object-cover border-2 border-primary/50" />
                   ) : (
                     <div className="w-14 h-14 rounded-full bg-neutral-800 border-2 border-neutral-700 flex items-center justify-center text-xl">👤</div>
                   )}
@@ -349,13 +343,13 @@ export default function DashboardPage() {
                 <label className="block text-xs text-neutral-400 mb-1">Hobi / Ketertarikan</label>
                 <input type="text" value={editData.hobbies} onChange={e => setEditData({...editData, hobbies: e.target.value})}
                   placeholder="Misal: Sepakbola, Modifikasi Motor, Musik"
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-amber-500" />
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary" />
               </div>
 
               <div>
                 <label className="block text-xs text-neutral-400 mb-1">Alamat (Home Service)</label>
                 <textarea value={editData.address} onChange={e => setEditData({...editData, address: e.target.value})}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-amber-500 min-h-[80px]" />
+                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary min-h-[80px]" />
               </div>
 
               <div className="flex justify-end gap-3 mt-2">
@@ -364,7 +358,7 @@ export default function DashboardPage() {
                   Batal
                 </button>
                 <button type="submit" disabled={savingProfile}
-                  className="px-6 py-2 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-lg transition-colors disabled:opacity-50">
+                  className="px-6 py-2 btn-primary text-background font-bold rounded-lg transition-colors disabled:opacity-50">
                   {savingProfile ? 'Menyimpan...' : 'Simpan Perubahan'}
                 </button>
               </div>

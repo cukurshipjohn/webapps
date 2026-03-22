@@ -1,15 +1,24 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../lib/supabase';
+import { getTenantFromRequest } from '../../../lib/tenant-context';
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type'); // 'barbershop' atau 'home'
+
+    // Ambil tenant dari header (di-inject oleh middleware)
+    const { tenantId } = getTenantFromRequest(request);
 
     try {
         let query = supabaseAdmin
             .from('services')
             .select('*')
             .order('price', { ascending: true });
+
+        // Filter tenant jika ada
+        if (tenantId) {
+            query = query.eq('tenant_id', tenantId);
+        }
 
         // Filter berdasarkan prefix nama layanan
         if (type === 'home') {
@@ -27,7 +36,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST() {
-    // Seed services untuk setup awal
+    // Seed services (hanya untuk setup awal, tidak perlu tenant di sini)
     try {
         const { error } = await supabaseAdmin
             .from('services')

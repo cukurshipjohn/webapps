@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getTenantFromRequest } from '@/lib/tenant-context';
 import jwt from 'jsonwebtoken';
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
         const { phoneNumber, otpCode } = body;
@@ -10,6 +11,9 @@ export async function POST(request: Request) {
         if (!phoneNumber || !otpCode) {
             return NextResponse.json({ message: 'Nomor HP dan kode OTP diperlukan.' }, { status: 400 });
         }
+
+        // Baca tenant context dari middleware header
+        const { tenantId } = getTenantFromRequest(request);
 
         // 1. Cek OTP di Supabase — harus cocok, belum expired, belum dipakai
         const { data: sessions, error: fetchError } = await supabaseAdmin
@@ -35,7 +39,7 @@ export async function POST(request: Request) {
             .update({ used: true })
             .eq('id', sessions[0].id);
 
-        // 3. Cari atau buat user
+        // 3. Cari atau buat user — assign tenant_id jika ada
         const { data: existingUsers } = await supabaseAdmin
             .from('users')
             .select('*')
@@ -46,7 +50,11 @@ export async function POST(request: Request) {
         if (!existingUsers || existingUsers.length === 0) {
             const { data: newUser, error: createError } = await supabaseAdmin
                 .from('users')
-                .insert({ phone_number: phoneNumber })
+                .insert({ 
+                    phone_number: phoneNumber,
+                    // Assign tenant_id jika pengunjung dari subdomain tenant
+                    ...(tenantId ? { tenant_id: tenantId } : {})
+                })
                 .select()
                 .single();
 
@@ -58,24 +66,44 @@ export async function POST(request: Request) {
 
         // 4. Terbitkan JWT token
         const token = jwt.sign(
-            { id: user.id, phoneNumber: user.phone_number },
+            { 
+                id: user.id, 
+                phoneNumber: user.phone_number,
+                role: user.role,
+                tenant_id: user.tenant_id
+            },
             process.env.JWT_SECRET || 'fallback_secret',
             { expiresIn: '24h' }
         );
 
-        return NextResponse.json({
+        const response = NextResponse.json({
             message: 'Login berhasil!',
-            token,
+            token, // tetapkan dikirim untuk backward compatibility
             user: { 
                 id: user.id, 
                 phoneNumber: user.phone_number,
                 name: user.name,
                 address: user.address,
                 photoUrl: user.photo_url,
-                hobbies: user.hobbies
+                hobbies: user.hobbies,
+                role: user.role,
+                tenant_id: user.tenant_id
             },
             requireProfileCompletion: !user.name // Jika name null/kosong, berarti user baru
         });
+
+        // Set HttpOnly cookie
+        response.cookies.set({
+            name: 'token',
+            value: token,
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: 60 * 60 * 24 // 24 hours
+        });
+
+        return response;
     } catch (error: any) {
         console.error('Verify OTP error:', error);
         return NextResponse.json({

@@ -1,13 +1,23 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../lib/supabase';
+import { getTenantFromRequest } from '../../../lib/tenant-context';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+    // Ambil tenant dari header (di-inject oleh middleware)
+    const { tenantId } = getTenantFromRequest(request);
+
     try {
-        const { data: barbers, error } = await supabaseAdmin
+        let query = supabaseAdmin
             .from('barbers')
             .select('*')
             .order('name', { ascending: true });
 
+        // Filter per tenant jika ada
+        if (tenantId) {
+            query = query.eq('tenant_id', tenantId);
+        }
+
+        const { data: barbers, error } = await query;
         if (error) throw error;
         return NextResponse.json(barbers);
     } catch (error: any) {
@@ -16,7 +26,7 @@ export async function GET() {
 }
 
 export async function POST() {
-    // Seed barbers for initial setup
+    // Seed barbers (hanya untuk setup awal)
     try {
         const { error } = await supabaseAdmin
             .from('barbers')

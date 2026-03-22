@@ -79,8 +79,7 @@ export default function BookAppointmentPage() {
     e.preventDefault();
     setError("");
 
-    const token = localStorage.getItem("token");
-    if (!token) {
+    if (!localStorage.getItem("user")) {
       router.push("/login?redirect=/book");
       return;
     }
@@ -124,8 +123,7 @@ export default function BookAppointmentPage() {
       const res = await fetch("/api/bookings", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           barberId: selectedBarber,
@@ -139,7 +137,6 @@ export default function BookAppointmentPage() {
       const data = await res.json();
 
       if (res.status === 401) {
-        localStorage.removeItem("token");
         localStorage.removeItem("user");
         router.push("/login?redirect=/book");
         return;
@@ -161,16 +158,16 @@ export default function BookAppointmentPage() {
 
   if (success) {
     return (
-      <main className="min-h-screen flex items-center justify-center p-6 bg-neutral-950 text-white">
+      <main className="min-h-screen flex items-center justify-center p-6 bg-background text-accent">
         <div className="glass max-w-lg w-full p-10 rounded-3xl text-center space-y-6">
           <div className="w-20 h-20 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl">✅</div>
           <h2 className="text-3xl font-bold">Booking Terkonfirmasi!</h2>
           <p className="text-neutral-400">Pesanan Anda berhasil dibuat. Konfirmasi sudah dikirim ke WhatsApp Anda.</p>
           {selectedServicePrice && (
-            <p className="text-2xl font-bold text-amber-500">{formatRupiah(selectedServicePrice)}</p>
+            <p className="text-2xl font-bold text-primary">{formatRupiah(selectedServicePrice)}</p>
           )}
           <button onClick={() => router.push("/dashboard")}
-            className="inline-block px-8 py-3 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-full transition-all">
+            className="inline-block px-8 py-3 btn-primary text-background font-bold rounded-full transition-all">
             Lihat Riwayat Pesanan
           </button>
         </div>
@@ -179,15 +176,15 @@ export default function BookAppointmentPage() {
   }
 
   return (
-    <main className="min-h-screen pt-24 pb-16 px-4 bg-neutral-950 text-white">
+    <main className="min-h-screen pt-24 pb-16 px-4 bg-background text-accent">
       <div className="max-w-2xl mx-auto">
 
         {/* Back & Title */}
         <div className="mb-8">
-          <button onClick={() => router.push("/dashboard")} className="text-amber-500 hover:underline text-sm font-medium mb-4 inline-block">
+          <button onClick={() => router.push("/dashboard")} className="text-primary hover:underline text-sm font-medium mb-4 inline-block">
             ← Kembali ke Dashboard
           </button>
-          <h1 className="text-3xl font-bold tracking-tight">Buat <span className="text-amber-500">Pesanan</span> Baru</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Buat <span className="text-primary">Pesanan</span> Baru</h1>
           <p className="text-neutral-400 mt-1 text-sm">Pilih barber, layanan, dan waktu yang sesuai.</p>
         </div>
 
@@ -208,11 +205,11 @@ export default function BookAppointmentPage() {
             <h2 className="text-sm font-semibold text-neutral-400 uppercase tracking-wider mb-4">1. Tipe Layanan</h2>
             <div className="grid grid-cols-2 gap-3">
               <button type="button" onClick={() => setServiceType("barbershop")}
-                className={`py-4 rounded-xl border text-sm font-semibold transition-all ${serviceType === "barbershop" ? "bg-amber-500/10 border-amber-500 text-amber-500" : "bg-neutral-900/50 border-neutral-800 text-neutral-400 hover:border-neutral-700"}`}>
+                className={`py-4 rounded-xl border text-sm font-semibold transition-all ${serviceType === "barbershop" ? "bg-primary/10 border-primary text-primary" : "bg-neutral-900/50 border-neutral-800 text-neutral-400 hover:border-neutral-700"}`}>
                 💈 Di Barbershop
               </button>
               <button type="button" onClick={() => setServiceType("home")}
-                className={`py-4 rounded-xl border text-sm font-semibold transition-all ${serviceType === "home" ? "bg-amber-500/10 border-amber-500 text-amber-500" : "bg-neutral-900/50 border-neutral-800 text-neutral-400 hover:border-neutral-700"}`}>
+                className={`py-4 rounded-xl border text-sm font-semibold transition-all ${serviceType === "home" ? "bg-primary/10 border-primary text-primary" : "bg-neutral-900/50 border-neutral-800 text-neutral-400 hover:border-neutral-700"}`}>
                 🏠 Home Service
               </button>
             </div>
@@ -234,7 +231,7 @@ export default function BookAppointmentPage() {
                     const displayName = s.name.replace("BARBER | ", "");
                     return (
                       <button type="button" key={s.id} onClick={() => setSelectedService(s.id)}
-                        className={`w-full flex justify-between items-center p-4 rounded-xl border text-sm font-medium transition-all ${selectedService === s.id ? "bg-amber-500/10 border-amber-500 text-amber-400" : "bg-neutral-900/50 border-neutral-800 text-neutral-300 hover:border-amber-500/40"}`}>
+                        className={`w-full flex justify-between items-center p-4 rounded-xl border text-sm font-medium transition-all ${selectedService === s.id ? "bg-primary/10 border-primary text-primary-hover" : "bg-neutral-900/50 border-neutral-800 text-neutral-300 hover:border-primary/40"}`}>
                         <span className="flex items-center gap-3">
                           <span className="text-xl">✂️</span>
                           <span className="font-semibold">{displayName}</span>
@@ -258,9 +255,9 @@ export default function BookAppointmentPage() {
                 <div className="grid grid-cols-2 gap-3">
                   {HOME_PRICING.map((tier) => (
                     <button type="button" key={tier.people} onClick={() => setSelectedHomePricing(tier)}
-                      className={`p-4 rounded-xl border text-left transition-all ${selectedHomePricing?.people === tier.people ? "bg-amber-500/10 border-amber-500" : "bg-neutral-900/50 border-neutral-800 hover:border-amber-500/40"}`}>
+                      className={`p-4 rounded-xl border text-left transition-all ${selectedHomePricing?.people === tier.people ? "bg-primary/10 border-primary" : "bg-neutral-900/50 border-neutral-800 hover:border-primary/40"}`}>
                       <p className="text-xs text-neutral-500 uppercase tracking-wider font-semibold mb-1">👥 {tier.label}</p>
-                      <p className={`text-xl font-bold ${selectedHomePricing?.people === tier.people ? "text-amber-400" : "text-white"}`}>
+                      <p className={`text-xl font-bold ${selectedHomePricing?.people === tier.people ? "text-primary-hover" : "text-white"}`}>
                         {formatRupiah(tier.price)}
                       </p>
                       <p className="text-[10px] text-neutral-600 mt-1">± {tier.duration} menit</p>
@@ -280,7 +277,7 @@ export default function BookAppointmentPage() {
               ) : (
                 barbers.map(b => (
                   <button type="button" key={b.id} onClick={() => setSelectedBarber(b.id)}
-                    className={`w-full flex items-center gap-4 p-4 rounded-xl border text-sm font-medium transition-all ${selectedBarber === b.id ? "bg-amber-500/10 border-amber-500 text-amber-400" : "bg-neutral-900/50 border-neutral-800 text-neutral-300 hover:border-amber-500/40"}`}>
+                    className={`w-full flex items-center gap-4 p-4 rounded-xl border text-sm font-medium transition-all ${selectedBarber === b.id ? "bg-primary/10 border-primary text-primary-hover" : "bg-neutral-900/50 border-neutral-800 text-neutral-300 hover:border-primary/40"}`}>
                     <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center text-xl flex-shrink-0">💇</div>
                     <div className="text-left">
                       <p className="font-semibold">{b.name}</p>
@@ -300,7 +297,7 @@ export default function BookAppointmentPage() {
                 value={customerAddress}
                 onChange={e => setCustomerAddress(e.target.value)}
                 placeholder="Masukkan alamat lengkap Anda (termasuk nama jalan, nomor rumah, RT/RW, Kelurahan)..."
-                className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-amber-500 min-h-[100px] text-sm"
+                className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary min-h-[100px] text-sm"
                 required
               />
             </div>
@@ -317,7 +314,7 @@ export default function BookAppointmentPage() {
               value={date}
               onChange={e => setDate(e.target.value)}
               min={new Date().toISOString().split("T")[0]}
-              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-amber-500 mb-4"
+              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-primary mb-4"
               required
             />
 
@@ -332,7 +329,7 @@ export default function BookAppointmentPage() {
                       const time = new Date(slot).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" });
                       return (
                         <button key={i} type="button" onClick={() => setSelectedSlot(slot)}
-                          className={`py-2 text-sm rounded-lg border transition-all ${selectedSlot === slot ? "bg-amber-500 text-neutral-950 border-amber-500 font-bold" : "bg-neutral-900 border-neutral-800 hover:border-amber-500/50 text-neutral-300 hover:text-amber-400"}`}>
+                          className={`py-2 text-sm rounded-lg border transition-all ${selectedSlot === slot ? "bg-primary text-background border-primary font-bold" : "bg-neutral-900 border-neutral-800 hover:border-primary/50 text-neutral-300 hover:text-primary-hover"}`}>
                           {time}
                         </button>
                       );
@@ -349,8 +346,8 @@ export default function BookAppointmentPage() {
 
           {/* === RINGKASAN + TOMBOL === */}
           {(selectedService || selectedHomePricing) && selectedBarber && selectedSlot && (
-            <div className="glass p-5 rounded-2xl border border-amber-500/20 bg-amber-500/5">
-              <h3 className="text-sm font-semibold text-amber-500 mb-3">📋 Ringkasan Pesanan</h3>
+            <div className="glass p-5 rounded-2xl border border-primary/20 bg-primary/5">
+              <h3 className="text-sm font-semibold text-primary mb-3">📋 Ringkasan Pesanan</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-neutral-400">Barber</span>
@@ -370,9 +367,9 @@ export default function BookAppointmentPage() {
                     {new Date(selectedSlot).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" })}
                   </span>
                 </div>
-                <div className="flex justify-between border-t border-amber-500/20 pt-2 mt-2">
+                <div className="flex justify-between border-t border-primary/20 pt-2 mt-2">
                   <span className="font-bold text-white">Total</span>
-                  <span className="font-bold text-amber-400 text-lg">
+                  <span className="font-bold text-primary-hover text-lg">
                     {formatRupiah(selectedServicePrice || 0)}
                   </span>
                 </div>
@@ -387,7 +384,7 @@ export default function BookAppointmentPage() {
               Batal
             </button>
             <button type="submit" disabled={loading || !selectedSlot || (serviceType === "barbershop" ? !selectedService : !selectedHomePricing)}
-              className="flex-1 py-4 bg-amber-500 hover:bg-amber-400 text-neutral-950 text-base font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+              className="flex-1 py-4 btn-primary text-background text-base font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed">
               {loading ? "Memproses..." : `✂️ Konfirmasi Booking${selectedServicePrice ? " — " + formatRupiah(selectedServicePrice) : ""}`}
             </button>
           </div>

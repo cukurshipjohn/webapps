@@ -1,10 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase';
+import { getTenantFromRequest } from '../../../../lib/tenant-context';
 
 const DURATION_HOME_SERVICE = 45; // minutes
 const DURATION_BARBERSHOP = 30; // minutes
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
     const barberId = searchParams.get('barberId');
@@ -15,12 +16,50 @@ export async function GET(request: Request) {
     }
 
     try {
-        // === TIMEZONE FIX: Gunakan WIB (Asia/Jakarta, UTC+7) ===
-        // Buat waktu awal dan akhir hari dalam WIB agar query ke DB benar
         const startOfDayWIB = new Date(`${date}T00:00:00+07:00`);
         const endOfDayWIB = new Date(`${date}T23:59:59+07:00`);
 
-        // Fetch semua booking barber ini pada tanggal yang dipilih
+        // Ambil tenant dari header dulu (dari middleware), fallback ke lookup barber
+        const { tenantId: headerTenantId } = getTenantFromRequest(request);
+        let tenantId = headerTenantId;
+
+        if (!tenantId) {
+            const { data: barberData, error: barberError } = await supabaseAdmin
+                .from('barbers')
+                .select('tenant_id')
+                .eq('id', barberId)
+                .single();
+
+            if (barberError || !barberData?.tenant_id) {
+                return NextResponse.json({ message: "Barber tidak valid." }, { status: 400 });
+            }
+            tenantId = barberData.tenant_id;
+        }
+
+        // 2. CEK HARI LIBUR / CUTI (time_off)
+        // Cari apakah ada rentang libur yang mencakup tanggal ini
+        const { data: timeOffData, error: timeOffError } = await supabaseAdmin
+            .from('time_off')
+            .select('*')
+            .eq('tenant_id', tenantId)
+            .lte('start_date', date)
+            .gte('end_date', date);
+
+        if (timeOffError && timeOffError.code !== 'PGRST116') {
+             console.error("Error fetching time off:", timeOffError);
+        }
+
+        // Filter: Apakah liburnya berlaku untuk seluruh toko (barber_id IS NULL) atau spesifik barber yang direquest
+        const isHoliday = (timeOffData || []).some(off => 
+            off.barber_id === null || off.barber_id === barberId
+        );
+
+        if (isHoliday) {
+            // Jika hari tersebut libur, langsung kembalikan array kosong (tidak ada slot tersedia)
+            return NextResponse.json([]);
+        }
+
+        // 3. Fetch semua booking barber ini pada tanggal yang dipilih
         const { data: existingBookings, error } = await supabaseAdmin
             .from('bookings')
             .select('start_time, end_time')

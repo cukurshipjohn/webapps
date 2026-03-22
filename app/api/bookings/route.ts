@@ -1,19 +1,20 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../lib/supabase';
+import { getTenantFromRequest } from '../../../lib/tenant-context';
 import jwt from 'jsonwebtoken';
 
 const DURATION_HOME_SERVICE = 45; // minutes
 const DURATION_BARBERSHOP = 30; // minutes
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
     try {
-        // Verify auth token
-        const authHeader = request.headers.get('authorization');
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        // Ambil token dari cookies
+        const token = request.cookies.get('token')?.value;
+
+        if (!token) {
             return NextResponse.json({ message: 'Authentication token required.' }, { status: 401 });
         }
 
-        const token = authHeader.split(' ')[1];
         let decoded: any;
         try {
             decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
@@ -22,6 +23,10 @@ export async function POST(request: Request) {
         }
 
         const userId = decoded.id;
+
+        // Ambil tenant dari header (di-inject oleh middleware)
+        const { tenantId: headerTenantId } = getTenantFromRequest(request);
+
         const body = await request.json();
         const { barberId, serviceId, serviceType, startTime, customerAddress } = body;
 
@@ -33,11 +38,56 @@ export async function POST(request: Request) {
         const gap = serviceType === 'home' ? DURATION_HOME_SERVICE : DURATION_BARBERSHOP;
         const endTime = new Date(bookingTime.getTime() + gap * 60000);
 
-        // Check for booking conflicts using Supabase RPC or overlap query
+        // AMBIL tenant_id DARI BARBER YANG DIPILIH (source of truth)
+        const { data: barberData, error: barberError } = await supabaseAdmin
+            .from('barbers')
+            .select('tenant_id, phone, name')
+            .eq('id', barberId)
+            .single();
+
+        if (barberError || !barberData) {
+            return NextResponse.json({ message: "Barber tidak ditemukan." }, { status: 404 });
+        }
+
+        // Gunakan tenant_id dari barber (lebih aman dari header)
+        const tenantId = barberData.tenant_id || headerTenantId;
+
+        if (!tenantId) {
+            return NextResponse.json({ message: "Tidak dapat menentukan tenant untuk booking ini." }, { status: 400 });
+        }
+
+        // ─── PLAN ENFORCEMENT: cek limit max_bookings_per_month ────
+        const { supabaseAdmin: db } = await import('../../../lib/supabase');
+        const { data: tenantPlan } = await db
+            .from('tenants')
+            .select('max_bookings_per_month')
+            .eq('id', tenantId)
+            .single();
+
+        if (tenantPlan) {
+            const now = new Date();
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+            const { count: bookingCount } = await db
+                .from('bookings')
+                .select('*', { count: 'exact', head: true })
+                .eq('tenant_id', tenantId)
+                .gte('created_at', startOfMonth);
+
+            if (typeof bookingCount === 'number' && bookingCount >= (tenantPlan.max_bookings_per_month ?? 50)) {
+                return NextResponse.json({
+                    message: `Batas booking bulan ini tercapai (${tenantPlan.max_bookings_per_month} booking). Upgrade plan untuk kapasitas lebih.`,
+                    upgrade_required: true,
+                }, { status: 403 });
+            }
+        }
+        // ───────────────────────────────────────────────────────────
+
+        // Check for booking conflicts
         const { data: conflicts, error: conflictError } = await supabaseAdmin
             .from('bookings')
             .select('id')
             .eq('barber_id', barberId)
+            .eq('tenant_id', tenantId)
             .lt('start_time', endTime.toISOString())
             .gt('end_time', bookingTime.toISOString());
 
@@ -58,21 +108,21 @@ export async function POST(request: Request) {
                 start_time: bookingTime.toISOString(),
                 end_time: endTime.toISOString(),
                 customer_address: serviceType === 'home' ? customerAddress : null,
-                status: 'confirmed'
+                status: 'confirmed',
+                tenant_id: tenantId
             })
             .select()
             .single();
 
         if (insertError) {
             if (insertError.code === '23503' && insertError.message.includes('bookings_user_id_fkey')) {
-                return NextResponse.json({ message: "Sesi Anda tidak valid atau akun tidak ditemukan. Silakan login kembali." }, { status: 401 });
+                return NextResponse.json({ message: "Sesi Anda tidak valid. Silakan login kembali." }, { status: 401 });
             }
             throw insertError;
         }
 
-        // Fetch full details for Webhook and Notification
-        const [ { data: barber }, { data: user }, { data: service } ] = await Promise.all([
-            supabaseAdmin.from('barbers').select('phone, name').eq('id', barberId).single(),
+        // Fetch full details for Notification
+        const [ { data: user }, { data: service } ] = await Promise.all([
             supabaseAdmin.from('users').select('phone_number, name').eq('id', userId).single(),
             supabaseAdmin.from('services').select('name, price').eq('id', serviceId).single()
         ]);
@@ -81,11 +131,11 @@ export async function POST(request: Request) {
         const customerName = user?.name || "Pelanggan Baru";
         const customerPhone = user?.phone_number || "Tidak diketahui";
 
-        // 1. Send WhatsApp notification to barber via Microservice
-        if (barber && barber.phone) {
+        // Send WhatsApp notification to barber via Microservice
+        if (barberData.phone) {
             const barberWaMessage = `🔔 *PESANAN BARU MASUK*\n\n` +
                 `*Pelanggan:* ${customerName} (${customerPhone})\n` +
-                `*Layanan:* ${service?.name || 'Tbd'} - $${service?.price || '0'}\n` +
+                `*Layanan:* ${service?.name || 'Tbd'} - Rp${service?.price || '0'}\n` +
                 `*Tipe:* ${serviceType === 'home' ? 'Home Service' : 'Di Barbershop'}\n` +
                 `*Waktu:* ${formattedTime}\n` +
                 (serviceType === 'home' ? `*Alamat:* ${customerAddress}\n` : '') +
@@ -96,26 +146,21 @@ export async function POST(request: Request) {
             const ownerPhone = process.env.OWNER_PHONE_NUMBER;
 
             if (waServiceUrl) {
-                // Pastikan URL memiliki protokol
-                if (!waServiceUrl.startsWith('http')) {
-                    waServiceUrl = `https://${waServiceUrl}`;
-                }
-                // Background execution (tidak di-await penuh mencegah timeout jika WA lambat)
-                // Notifikasi untuk Barber
+                if (!waServiceUrl.startsWith('http')) waServiceUrl = `https://${waServiceUrl}`;
+
                 fetch(`${waServiceUrl}/send-message`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'x-internal-secret': waSecret || '' },
-                    body: JSON.stringify({ phoneNumber: barber.phone, message: barberWaMessage })
+                    body: JSON.stringify({ phoneNumber: barberData.phone, message: barberWaMessage })
                 }).catch(err => console.error("Gagal mengirim WA ke Barber:", err));
 
-                // Notifikasi untuk Owner
                 if (ownerPhone) {
                     const ownerWaMessage = `👑 *LAPORAN BOOKING BARU*\n\n` +
                         `*Pelanggan:* ${customerName} (${customerPhone})\n` +
-                        `*Barber Terpilih:* ${barber.name}\n` +
-                        `*Layanan:* ${service?.name} - $${service?.price}\n` +
+                        `*Barber Terpilih:* ${barberData.name}\n` +
+                        `*Layanan:* ${service?.name} - Rp${service?.price}\n` +
                         `*Jadwal:* ${formattedTime}`;
-                        
+
                     fetch(`${waServiceUrl}/send-message`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'x-internal-secret': waSecret || '' },
@@ -125,14 +170,15 @@ export async function POST(request: Request) {
             }
         }
 
-        // 2. Fire the Webhook
+        // Fire Webhook
         const webhookUrl = process.env.WEBHOOK_URL;
         if (webhookUrl && webhookUrl.startsWith('http')) {
             const webhookPayload = {
                 event: "booking_created",
                 booking_id: newBooking.id,
+                tenant_id: tenantId,
                 customer: { name: customerName, phone: customerPhone, address: customerAddress },
-                barber: { id: barberId, name: barber?.name },
+                barber: { id: barberId, name: barberData.name },
                 service: { name: service?.name, type: serviceType, price: service?.price },
                 schedule: { start_time: bookingTime.toISOString(), format_time: formattedTime }
             };
