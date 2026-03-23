@@ -138,12 +138,18 @@ export async function proxy(request: NextRequest) {
         requestHeaders.set('x-tenant-slug', tenant.slug);
         requestHeaders.set('x-shop-name', tenant.shop_name);
 
+        // ─── AUTO REDIRECT: / → /book ──────────────────────────────────────
+        // Ketika user membuka subdomain tenant (misal john.johncukurship.online/)
+        // langsung arahkan ke halaman booking utama mereka.
+        if (pathname === '/' || pathname === '') {
+            return NextResponse.redirect(new URL('/book', request.url));
+        }
+
         return NextResponse.next({
             request: { headers: requestHeaders },
         });
     } catch (err) {
         console.error('[Proxy] Tenant lookup error:', err);
-        // Jika gagal (network error, dll) → lanjutkan tanpa tenant context daripada 500
         return NextResponse.next();
     }
 }
