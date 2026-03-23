@@ -55,7 +55,7 @@ async function getTenantBySlug(slug: string) {
     return data?.[0] ?? null;
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
     // ─── BRANCH 1: ADMIN & SUPERADMIN AUTH ───────────────────────────────────
@@ -142,7 +142,7 @@ export async function middleware(request: NextRequest) {
             request: { headers: requestHeaders },
         });
     } catch (err) {
-        console.error('[Middleware] Tenant lookup error:', err);
+        console.error('[Proxy] Tenant lookup error:', err);
         // Jika gagal (network error, dll) → lanjutkan tanpa tenant context daripada 500
         return NextResponse.next();
     }
