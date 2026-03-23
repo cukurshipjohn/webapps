@@ -7,12 +7,12 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 // Subdomain yang dikecualikan dari tenant check
 const EXCLUDED_SUBDOMAINS = new Set(['www', 'app', 'api', 'mail', 'smtp']);
 
-// Root domain kita
-const ROOT_DOMAIN = 'cukurship.id';
+// Root domain kita — baca dari env agar mudah ganti domain
+const ROOT_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || 'cukurship.id';
 
 /**
  * Ambil slug tenant dari hostname request.
- * Untuk production: johncukur.cukurship.id → "johncukur"
+ * Contoh: john-cukurship.johncukurship.online → "john-cukurship"
  * Untuk localhost: pakai query param ?tenant=john-cukurship sebagai fallback
  */
 function extractTenantSlug(request: NextRequest): string | null {
