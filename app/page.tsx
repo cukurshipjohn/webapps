@@ -2,25 +2,53 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import PostFeed from "@/components/PostFeed";
 
 // Plan data mirrored from lib/billing-plans.ts (untuk client component tanpa import langsung)
 const PLANS = [
     {
         key: "starter", name: "Starter", price: 99000, max_barbers: 2, max_bookings: 50,
-        features: ["Maks. 2 kapster", "Maks. 50 booking/bulan", "Notifikasi WhatsApp", "Panel Admin lengkap", "URL barbershop sendiri"],
+        features: [
+            "Maks. 2 kapster",
+            "Maks. 50 booking/bulan",
+            "Home Service maks. 5x/bulan",
+            "Notifikasi WhatsApp",
+            "Panel Admin lengkap",
+            "URL barbershop sendiri",
+        ],
         popular: false,
     },
     {
         key: "pro", name: "Pro", price: 199000, max_barbers: 5, max_bookings: 9999,
-        features: ["Maks. 5 kapster", "Booking tidak terbatas", "Notifikasi WhatsApp", "Panel Admin lengkap", "URL barbershop sendiri", "Laporan bulanan"],
+        features: [
+            "Maks. 5 kapster",
+            "Booking tidak terbatas",
+            "Home Service tidak terbatas",
+            "Blast Notifikasi WA ke pelanggan",
+            "Notifikasi WhatsApp",
+            "Panel Admin lengkap",
+            "URL barbershop sendiri",
+            "Laporan bulanan",
+        ],
         popular: true,
     },
     {
         key: "business", name: "Business", price: 349000, max_barbers: 9999, max_bookings: 9999,
-        features: ["Kapster tidak terbatas", "Booking tidak terbatas", "WA Priority Support", "Panel Admin lengkap", "URL barbershop sendiri", "Laporan bulanan & tahunan"],
+        features: [
+            "Kapster tidak terbatas",
+            "Booking tidak terbatas",
+            "Home Service tidak terbatas",
+            "Blast Notifikasi WA ke pelanggan",
+            "WA Priority Support",
+            "Panel Admin lengkap",
+            "URL barbershop sendiri",
+            "Laporan bulanan & tahunan",
+            "Support prioritas",
+        ],
         popular: false,
     },
 ];
+
 
 const FEATURES = [
     { icon: "📱", title: "Booking Online 24/7", desc: "Pelanggan bisa booking kapan saja lewat link khusus barbershop Anda, tanpa perlu install aplikasi." },
@@ -136,6 +164,13 @@ export default function LandingPage() {
                             Live — 3 booking masuk hari ini
                         </div>
                     </div>
+                </div>
+            </section>
+
+            {/* ── PROMO & POSTS (only shown if tenant has posts) ─── */}
+            <section className="pb-4 px-6">
+                <div className="max-w-2xl mx-auto">
+                  <PostFeed maxItems={3} showTitle={true} />
                 </div>
             </section>
 

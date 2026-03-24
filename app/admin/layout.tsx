@@ -49,9 +49,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: "Manajemen Kapster", href: "/admin/barbers", icon: "✂️", exact: false },
     { name: "Manajemen Layanan", href: "/admin/services", icon: "💈", exact: false },
     { name: "Monitor Booking", href: "/admin/bookings", icon: "📅", exact: false },
+    { name: "Post & Promo", href: "/admin/posts", icon: "📣", exact: false },
     { name: "Langganan & Billing", href: "/admin/billing", icon: "💳", exact: false },
     { name: "Pengaturan Toko", href: "/admin/settings", icon: "⚙️", exact: false },
   ];
+
 
   return (
     <div className="min-h-screen bg-background text-accent flex flex-col md:flex-row font-sans selection:bg-primary/30">

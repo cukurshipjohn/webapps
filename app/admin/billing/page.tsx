@@ -10,7 +10,13 @@ const PLANS = [
         price: 99000,
         max_barbers: 2,
         max_bookings: 50,
-        features: ["Maks. 2 kapster", "Maks. 50 booking/bulan", "Notifikasi WhatsApp", "Panel Admin lengkap"],
+        features: [
+            "Maks. 2 kapster",
+            "Maks. 50 booking/bulan",
+            "Home Service maks. 5x/bulan",
+            "Notifikasi WhatsApp",
+            "Panel Admin lengkap",
+        ],
         color: "from-neutral-800 to-neutral-900",
         accent: "border-neutral-600",
     },
@@ -20,7 +26,15 @@ const PLANS = [
         price: 199000,
         max_barbers: 5,
         max_bookings: 9999,
-        features: ["Maks. 5 kapster", "Booking tidak terbatas", "Notifikasi WhatsApp", "Panel Admin lengkap", "Laporan bulanan"],
+        features: [
+            "Maks. 5 kapster",
+            "Booking tidak terbatas",
+            "Home Service tidak terbatas",
+            "Blast Notifikasi WA ke pelanggan",
+            "Notifikasi WhatsApp",
+            "Panel Admin lengkap",
+            "Laporan bulanan",
+        ],
         color: "from-amber-950/40 to-neutral-900",
         accent: "border-amber-500",
         popular: true,
@@ -31,11 +45,21 @@ const PLANS = [
         price: 349000,
         max_barbers: 9999,
         max_bookings: 9999,
-        features: ["Kapster tidak terbatas", "Booking tidak terbatas", "WA Priority", "Panel Admin lengkap", "Laporan bulanan & tahunan", "Support prioritas"],
+        features: [
+            "Kapster tidak terbatas",
+            "Booking tidak terbatas",
+            "Home Service tidak terbatas",
+            "Blast Notifikasi WA ke pelanggan",
+            "WA Priority Support",
+            "Panel Admin lengkap",
+            "Laporan bulanan & tahunan",
+            "Support prioritas",
+        ],
         color: "from-amber-900/30 to-neutral-900",
         accent: "border-amber-400",
     },
 ];
+
 
 function formatRupiah(amount: number) {
     return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(amount);
@@ -250,6 +274,11 @@ export default function BillingPage() {
                             used={status?.usage?.bookings_this_month ?? 0}
                             max={status?.limits?.max_bookings_per_month ?? 50}
                             label="Booking bulan ini"
+                        />
+                        <ProgressBar
+                            used={status?.usage?.home_service_this_month ?? 0}
+                            max={status?.limits?.max_home_service_per_month ?? 5}
+                            label="Home Service bulan ini"
                         />
                     </div>
                 </div>

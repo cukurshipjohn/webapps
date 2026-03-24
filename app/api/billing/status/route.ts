@@ -40,6 +40,15 @@ export async function GET(request: NextRequest) {
             .gte('created_at', startOfMonth)
             .lte('created_at', endOfMonth);
 
+        // Hitung home service bulan ini
+        const { count: homeServiceCount } = await db
+            .from('bookings')
+            .select('*', { count: 'exact', head: true })
+            .eq('tenant_id', tenantId)
+            .eq('service_type', 'home')
+            .gte('created_at', startOfMonth)
+            .lte('created_at', endOfMonth);
+
         // Riwayat transaksi (maks 10 terakhir)
         const { data: transactions } = await db
             .from('subscription_transactions')
@@ -54,6 +63,8 @@ export async function GET(request: NextRequest) {
             ? Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
             : 0;
 
+        const { getHomeServiceLimit } = await import('@/lib/billing-plans');
+        
         return NextResponse.json({
             plan: tenant.plan || 'trial',
             is_active: tenant.is_active,
@@ -62,10 +73,12 @@ export async function GET(request: NextRequest) {
             limits: {
                 max_barbers: tenant.max_barbers ?? 2,
                 max_bookings_per_month: tenant.max_bookings_per_month ?? 50,
+                max_home_service_per_month: getHomeServiceLimit(tenant.plan || 'starter'),
             },
             usage: {
                 barbers: barberCount ?? 0,
                 bookings_this_month: bookingCount ?? 0,
+                home_service_this_month: homeServiceCount ?? 0,
             },
             transactions: transactions ?? [],
         });

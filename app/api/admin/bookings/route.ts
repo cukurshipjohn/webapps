@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createTenantClient } from '@/lib/supabase';
+import { createTenantClient, supabaseAdmin } from '@/lib/supabase';
 import { getUserFromToken, requireRole } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
@@ -124,11 +124,23 @@ export async function PATCH(request: NextRequest) {
                 
                 if (waServiceUrl) {
                     if (!waServiceUrl.startsWith('http')) waServiceUrl = `https://${waServiceUrl}`;
+                    
+                    // Ambil wa_session_id
+                    const { data: tenantSettings } = await supabaseAdmin
+                        .from('tenant_settings')
+                        .select('wa_session_id')
+                        .eq('tenant_id', bookingData.tenant_id)
+                        .single();
+
                     // Execute without awaiting to avoid blocking the API response
                     fetch(`${waServiceUrl}/send-message`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'x-internal-secret': waSecret || '' },
-                        body: JSON.stringify({ phoneNumber: customerPhone, message })
+                        body: JSON.stringify({ 
+                            session_id: tenantSettings?.wa_session_id || null, 
+                            phoneNumber: customerPhone, 
+                            message 
+                        })
                     }).catch(err => console.error("Gagal mengirim WA ke kustomer pembatalan:", err));
                 }
             }

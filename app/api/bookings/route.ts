@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../lib/supabase';
 import { getTenantFromRequest } from '../../../lib/tenant-context';
+import { getHomeServiceLimit } from '../../../lib/billing-plans';
 import jwt from 'jsonwebtoken';
+
 
 const DURATION_HOME_SERVICE = 45; // minutes
 const DURATION_BARBERSHOP = 30; // minutes
@@ -60,7 +62,7 @@ export async function POST(request: NextRequest) {
         const { supabaseAdmin: db } = await import('../../../lib/supabase');
         const { data: tenantPlan } = await db
             .from('tenants')
-            .select('max_bookings_per_month')
+            .select('max_bookings_per_month, plan_key')
             .eq('id', tenantId)
             .single();
 
@@ -79,8 +81,30 @@ export async function POST(request: NextRequest) {
                     upgrade_required: true,
                 }, { status: 403 });
             }
+
+            // ─── HOME SERVICE LIMIT (Starter: maks 5x/bulan) ──────────
+            if (serviceType === 'home') {
+                const homeLimit = getHomeServiceLimit(tenantPlan.plan_key ?? 'starter');
+                if (homeLimit < 9999) {
+                    const { count: homeCount } = await db
+                        .from('bookings')
+                        .select('*', { count: 'exact', head: true })
+                        .eq('tenant_id', tenantId)
+                        .eq('service_type', 'home')
+                        .gte('created_at', startOfMonth);
+
+                    if (typeof homeCount === 'number' && homeCount >= homeLimit) {
+                        return NextResponse.json({
+                            message: `Batas Home Service bulan ini tercapai (${homeLimit}x). Upgrade ke paket Pro untuk Home Service tidak terbatas.`,
+                            upgrade_required: true,
+                        }, { status: 403 });
+                    }
+                }
+            }
+            // ──────────────────────────────────────────────────────────
         }
         // ───────────────────────────────────────────────────────────
+
 
         // Check for booking conflicts
         const { data: conflicts, error: conflictError } = await supabaseAdmin
@@ -121,15 +145,17 @@ export async function POST(request: NextRequest) {
             throw insertError;
         }
 
-        // Fetch full details for Notification
-        const [ { data: user }, { data: service } ] = await Promise.all([
+        // Fetch full details for Notification, including tenant's WA session
+        const [ { data: user }, { data: service }, { data: tenantSettings } ] = await Promise.all([
             supabaseAdmin.from('users').select('phone_number, name').eq('id', userId).single(),
-            supabaseAdmin.from('services').select('name, price').eq('id', serviceId).single()
+            supabaseAdmin.from('services').select('name, price').eq('id', serviceId).single(),
+            supabaseAdmin.from('tenant_settings').select('wa_session_id').eq('tenant_id', tenantId).single()
         ]);
 
         const formattedTime = bookingTime.toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'short' });
         const customerName = user?.name || "Pelanggan Baru";
         const customerPhone = user?.phone_number || "Tidak diketahui";
+        const waSessionId = tenantSettings?.wa_session_id || null;
 
         // Send WhatsApp notification to barber via Microservice
         if (barberData.phone) {
@@ -151,7 +177,7 @@ export async function POST(request: NextRequest) {
                 fetch(`${waServiceUrl}/send-message`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'x-internal-secret': waSecret || '' },
-                    body: JSON.stringify({ phoneNumber: barberData.phone, message: barberWaMessage })
+                    body: JSON.stringify({ session_id: waSessionId, phoneNumber: barberData.phone, message: barberWaMessage })
                 }).catch(err => console.error("Gagal mengirim WA ke Barber:", err));
 
                 if (ownerPhone) {
@@ -164,7 +190,7 @@ export async function POST(request: NextRequest) {
                     fetch(`${waServiceUrl}/send-message`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'x-internal-secret': waSecret || '' },
-                        body: JSON.stringify({ phoneNumber: ownerPhone, message: ownerWaMessage })
+                        body: JSON.stringify({ session_id: waSessionId, phoneNumber: ownerPhone, message: ownerWaMessage })
                     }).catch(err => console.error("Gagal mengirim WA ke Owner:", err));
                 }
             }

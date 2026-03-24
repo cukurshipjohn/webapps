@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import WhatsAppSettingsTab from "./WhatsAppSettingsTab";
 
 // Tipe Data untuk Settings
 interface TenantSettings {
@@ -24,7 +25,7 @@ interface TenantSettings {
   is_home_service_enabled: boolean;
 }
 
-type TabType = 'identity' | 'appearance' | 'operational' | 'preview';
+type TabType = 'identity' | 'appearance' | 'operational' | 'whatsapp' | 'preview';
 
 export default function AdminSettingsPage() {
   const router = useRouter();
@@ -224,6 +225,9 @@ export default function AdminSettingsPage() {
                     <button onClick={() => setActiveTab('operational')} className={`flex-1 min-w-[120px] px-4 py-2.5 text-sm font-bold rounded-xl transition-all ${activeTab === 'operational' ? 'bg-[var(--color-surface)] text-[var(--color-primary)] shadow-sm' : 'text-neutral-400 hover:text-white hover:bg-white/5'}`}>
                         ⚙️ Operasional
                     </button>
+                    <button onClick={() => setActiveTab('whatsapp')} className={`flex-1 min-w-[120px] px-4 py-2.5 text-sm font-bold rounded-xl transition-all ${activeTab === 'whatsapp' ? 'bg-[var(--color-surface)] text-green-500 shadow-sm' : 'text-neutral-400 hover:text-white hover:bg-white/5'}`}>
+                        💬 WhatsApp
+                    </button>
                     <button onClick={() => setActiveTab('preview')} className={`flex-1 min-w-[120px] px-4 py-2.5 text-sm font-bold rounded-xl transition-all ${activeTab === 'preview' ? 'bg-[var(--color-surface)] text-[var(--color-primary)] shadow-sm' : 'text-neutral-400 hover:text-white hover:bg-white/5'} lg:hidden`}>
                         📱 Pratinjau
                     </button>
@@ -417,6 +421,11 @@ export default function AdminSettingsPage() {
                                 </Link>
                             </div>
                         </div>
+                    )}
+
+                    {/* TAB 4: WHATSAPP */}
+                    {activeTab === 'whatsapp' && (
+                        <WhatsAppSettingsTab />
                     )}
                 </div>
             </div>

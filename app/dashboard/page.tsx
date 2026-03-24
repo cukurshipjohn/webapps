@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import PostFeed from "@/components/PostFeed";
 
 type Tab = "profile" | "home" | "history";
 
@@ -211,6 +212,10 @@ export default function DashboardPage() {
         {/* --- TAB: BERANDA --- */}
         {activeTab === "home" && (
           <div className="px-4 space-y-4 animate-in fade-in duration-300">
+
+            {/* Pengumuman & Promo */}
+            <PostFeed showTitle={true} />
+
             <div className="glass p-8 rounded-2xl border border-neutral-800/50">
               <h2 className="text-xl font-semibold mb-3 text-primary flex items-center gap-2">📅 Pesan Jadwal Baru</h2>
               <p className="text-neutral-400 mb-6 text-sm leading-relaxed">
