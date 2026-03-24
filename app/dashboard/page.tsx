@@ -1,67 +1,174 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import PostFeed from "@/components/PostFeed";
 
+// ── Font map ──────────────────────────────────────────────
+const FONT_MAP: Record<string, string> = {
+  modern: "'Inter', 'DM Sans', sans-serif",
+  bold:   "'Poppins', 'Sora', sans-serif",
+  classic:"'Playfair Display', 'Lora', serif",
+  mono:   "'JetBrains Mono', 'Fira Code', monospace",
+};
+
+// ── Types ─────────────────────────────────────────────────
+interface Barber {
+  id: string;
+  name: string;
+  specialty: string | null;
+  photo_url: string | null;
+}
+
+interface ShopInfo {
+  shop_name: string;
+  shop_tagline: string;
+  logo_url: string | null;
+  hero_image_url: string | null;
+  color_primary: string;
+  color_primary_hover: string;
+  color_secondary: string;
+  color_background: string;
+  color_surface: string;
+  color_accent: string;
+  use_gradient: boolean;
+  font_choice: string;
+  whatsapp_owner: string | null;
+  operating_open: string | null;
+  operating_close: string | null;
+  is_home_service_enabled: boolean;
+  slug: string | null;
+  barbers: Barber[];
+}
+
 type Tab = "profile" | "home" | "history";
 
+// ── Helpers ───────────────────────────────────────────────
+function toMinutes(hhmm: string | null): number | null {
+  if (!hhmm) return null;
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function nowWIBMinutes(): number {
+  const d = new Date();
+  const utc = d.getUTCHours() * 60 + d.getUTCMinutes();
+  return (utc + 7 * 60) % (24 * 60);
+}
+
+function OpenStatus({ open, close }: { open: string | null; close: string | null }) {
+  const isOpen = useMemo(() => {
+    const o = toMinutes(open);
+    const c = toMinutes(close);
+    if (o === null || c === null) return null;
+    const now = nowWIBMinutes();
+    return now >= o && now < c;
+  }, [open, close]);
+
+  if (!open || !close) return null;
+
+  return (
+    <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold border backdrop-blur-sm
+      ${isOpen
+        ? "bg-green-500/10 border-green-500/30 text-green-400"
+        : "bg-red-500/10 border-red-500/30 text-red-400"
+      }`}>
+      <span className={`w-2 h-2 rounded-full ${isOpen ? "bg-green-400 animate-pulse" : "bg-red-400"}`} />
+      {isOpen ? `Sedang Buka · ${open}–${close} WIB` : `Sedang Tutup · Buka ${open} WIB`}
+    </div>
+  );
+}
+
+// ── Main Unified Dashboard ────────────────────────────────
 export default function DashboardPage() {
   const router = useRouter();
+  
+  // Public Store State
+  const [shop, setShop] = useState<ShopInfo | null>(null);
+  const [loadingShop, setLoadingShop] = useState(true);
+
+  // Private User State
   const [user, setUser] = useState<any>(null);
   const [stats, setStats] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<Tab>("profile"); // Mulai di tab profil
 
-  // Edit Profile State
+  // UI State
+  const [activeTab, setActiveTab] = useState<Tab>("home");
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({ name: "", address: "", hobbies: "", photoUrl: "" });
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
+  // 1. Fetch data
   useEffect(() => {
+    // 1A. Fetch shop info (selalu jalan meskipun belum login)
+    fetch("/api/store/info")
+      .then(r => r.json())
+      .then(data => { if (data.shop_name) setShop(data); })
+      .catch(() => {})
+      .finally(() => setLoadingShop(false));
+
+    // 1B. Fetch user info (jika ada token di localstorage)
     const userStr = localStorage.getItem("user");
-    if (!userStr) {
-      router.push("/login");
-      return;
+    if (userStr) {
+      const cachedUser = JSON.parse(userStr);
+      setUser(cachedUser);
+      
+      if (!cachedUser.name) {
+        router.push("/profile/complete");
+        return;
+      }
+
+      // Refresh profil
+      fetch("/api/profile/me")
+        .then(res => res.json())
+        .then(freshUser => {
+          if (freshUser && freshUser.id) {
+            setUser(freshUser);
+            localStorage.setItem("user", JSON.stringify(freshUser));
+          }
+        })
+        .catch(() => {});
+
+      // Refresh history
+      fetch("/api/profile/history")
+        .then(res => res.json())
+        .then(data => {
+          if (data.stats) {
+            setStats(data.stats);
+            setHistory(data.history || []);
+          }
+        })
+        .catch(() => {});
     }
-
-    const cachedUser = JSON.parse(userStr);
-    if (!cachedUser.name) {
-      router.push("/profile/complete");
-      return;
-    }
-
-    // Tampilkan dulu data dari localStorage agar UI tidak kosong
-    setUser(cachedUser);
-
-    // Lalu fetch data TERBARU dari database untuk memastikan foto, alamat, dsb selalu up-to-date
-    fetch("/api/profile/me")
-      .then(res => res.json())
-      .then(freshUser => {
-        if (freshUser && freshUser.id) {
-          // Update state dan localStorage dengan data terbaru
-          setUser(freshUser);
-          localStorage.setItem("user", JSON.stringify(freshUser));
-        }
-      })
-      .catch(err => console.error("Gagal refresh profil dari DB:", err));
-
-    // Fetch history & stats paralel
-    fetch("/api/profile/history")
-      .then(res => res.json())
-      .then(data => {
-        if (data.stats) {
-          setStats(data.stats);
-          setHistory(data.history || []);
-        }
-      })
-      .catch(err => console.error("Gagal load history:", err))
-      .finally(() => setLoading(false));
   }, [router]);
 
+  // 2. Handlers
+  const handleTabChange = (tab: Tab) => {
+    // Jika belum login dan mencoba akses Profil / History
+    if (!user && tab !== "home") {
+      router.push("/login?redirect=/dashboard");
+      return;
+    }
+    setActiveTab(tab);
+  };
+
+  const handleLogout = () => {
+    fetch("/api/auth/logout", { method: "POST" })
+      .finally(() => {
+        localStorage.removeItem("user");
+        setUser(null);
+        setActiveTab("home");
+      });
+  };
+
+  const handleBookClick = (e: React.MouseEvent) => {
+    if (!user) {
+      e.preventDefault();
+      router.push("/login?redirect=/book");
+    }
+  };
 
   const handleEditOpen = () => {
     setEditData({
@@ -78,18 +185,21 @@ export default function DashboardPage() {
     if (!file) return;
     if (!file.type.startsWith('image/')) { alert("Pilih file gambar yang valid!"); return; }
     setUploadingPhoto(true);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch('/api/profile/upload', {
-        method: 'POST',
-        body: formData
-      });
+      const res = await fetch("/api/profile/photo", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
-      setEditData({ ...editData, photoUrl: data.photoUrl });
+      
+      setEditData(prev => ({ ...prev, photoUrl: data.photoUrl }));
+      const updatedUser = { ...user, photoUrl: data.photoUrl };
+      setUser(updatedUser);
+      localStorage.setItem("user", JSON.stringify(updatedUser));
     } catch (err: any) {
-      alert("Gagal mengupload foto: " + err.message);
+      alert("Gagal upload: " + err.message);
     } finally {
       setUploadingPhoto(false);
     }
@@ -99,181 +209,266 @@ export default function DashboardPage() {
     e.preventDefault();
     setSavingProfile(true);
     try {
-      const res = await fetch("/api/profile/complete", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ name: editData.name, address: editData.address, hobbies: editData.hobbies, photoUrl: editData.photoUrl })
+      const res = await fetch("/api/profile/me", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editData),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
-      localStorage.setItem("user", JSON.stringify(data.user));
+      
       setUser(data.user);
+      localStorage.setItem("user", JSON.stringify(data.user));
       setIsEditing(false);
-    } catch (err) {
-      alert("Gagal menyimpan profil: " + err);
+    } catch (err: any) {
+      alert("Gagal menyimpan profil: " + err.message);
     } finally {
       setSavingProfile(false);
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      await fetch("/api/auth/logout", { method: "POST" });
-    } catch (e) {}
-    localStorage.removeItem("user");
-    router.push("/login");
-  };
+  // 3. Loading State (Hanya menunggu shop info)
+  if (loadingShop) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "#0A0A0A" }}>
+        <div className="space-y-3 text-center">
+          <div className="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mx-auto" />
+          <p className="text-neutral-500 text-sm">Memuat halaman…</p>
+        </div>
+      </div>
+    );
+  }
 
-  if (!user || loading) return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center text-primary gap-4">
-      <div className="w-8 h-8 border-4 border-primary/20 border-t-primary inline-block rounded-full animate-spin" />
-      <span className="text-sm font-medium tracking-wider animate-pulse">MEMUAT PROFIL...</span>
-    </div>
-  );
+  // 4. Dynamic Theming
+  const bg       = shop?.color_background  || "#0A0A0A";
+  const surface  = shop?.color_surface     || "#171717";
+  const primary  = shop?.color_primary     || "#F59E0B";
+  const primHov  = shop?.color_primary_hover || "#D97706";
+  const secondary= shop?.color_secondary   || "#D97706";
+  const accent   = shop?.color_accent      || "#FFFFFF";
+  const useGrad  = shop?.use_gradient      ?? false;
+  const fontFam  = FONT_MAP[shop?.font_choice || "modern"] || FONT_MAP.modern;
+
+  const heroBg = useGrad
+    ? `linear-gradient(135deg, ${bg} 0%, ${surface} 60%, ${bg} 100%)`
+    : bg;
 
   return (
-    <main className="min-h-screen bg-background text-accent pb-24">
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Poppins:wght@400;600;700;800&family=Playfair+Display:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap');
+        body { font-family: ${fontFam}; background: ${bg}; }
+      `}</style>
 
-      <div className="max-w-2xl mx-auto relative z-10">
-
-        {/* ===== TOP HEADER ===== */}
-        <header className="flex justify-between items-center p-6 pt-10 pb-4">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-xl font-bold tracking-tight">John<span className="text-primary">CukurShip</span></h1>
-              <Link href="/store" className="text-[10px] font-bold px-2 py-0.5 rounded border border-primary/30 text-primary hover:bg-primary/10 transition-colors">
-                🏠 HOME
-              </Link>
-            </div>
-            <p className="text-neutral-400 text-sm mt-0.5">Selamat datang, <span className="text-white font-medium">{user.name}</span> 👋</p>
+      <main className="min-h-screen pb-32 text-white" style={{ background: heroBg, color: accent }}>
+        
+        {/* ── TOP NAV BAR (Universal) ──────────────────────── */}
+        <nav className="sticky top-0 z-40 flex items-center justify-between px-5 py-3 border-b backdrop-blur-xl"
+          style={{ background: `${bg}e0`, borderColor: `${surface}80` }}>
+          <div className="flex items-center gap-2.5">
+            {shop?.logo_url ? (
+              <img src={shop.logo_url} alt="logo" className="w-8 h-8 rounded-lg object-cover" />
+            ) : (
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-lg"
+                style={{ background: `${primary}20`, color: primary }}>✂️</div>
+            )}
+            <span className="font-bold text-sm truncate max-w-[160px]" style={{ color: accent }}>
+              {shop?.shop_name || "Barbershop"}
+            </span>
           </div>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-1.5 bg-neutral-900 hover:bg-red-500/20 text-neutral-400 hover:text-red-400 border border-neutral-800 hover:border-red-500/30 rounded-lg text-sm transition-all"
-          >
-            Keluar
-          </button>
-        </header>
+          {!user ? (
+            <Link href="/login"
+              className="text-xs font-semibold px-3 py-1.5 rounded-full border transition-all"
+              style={{ borderColor: `${primary}50`, color: primary, background: `${primary}10` }}>
+              Masuk / Daftar
+            </Link>
+          ) : (
+            <button onClick={handleLogout}
+              className="text-xs font-semibold px-3 py-1.5 rounded-full border transition-all focus:outline-none"
+              style={{ borderColor: `#ef444450`, color: '#ef4444', background: `#ef444410` }}>
+              Keluar
+            </button>
+          )}
+        </nav>
 
-        {/* ===== TAB CONTENT ===== */}
+        {/* =========================================================
+            TAB: HOME (Store Page View)
+            ========================================================= */}
+        {activeTab === "home" && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 pb-20">
+            {/* HERO */}
+            <section className="relative overflow-hidden">
+              <div className="absolute inset-0 pointer-events-none"
+                style={{ background: `radial-gradient(ellipse at 50% 0%, ${primary}25 0%, transparent 65%)` }} />
+              {shop?.hero_image_url && (
+                <div className="absolute inset-0 z-0">
+                  <img src={shop.hero_image_url} alt="Hero" className="w-full h-full object-cover opacity-15" />
+                  <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, ${bg}60, ${bg}cc, ${bg})` }} />
+                </div>
+              )}
+              <div className="relative z-10 max-w-lg mx-auto px-5 pt-12 pb-8 text-center space-y-5">
+                <div className="relative inline-flex">
+                  {shop?.logo_url ? (
+                    <img src={shop.logo_url} alt="Logo" className="w-24 h-24 rounded-3xl object-cover border-2 shadow-2xl" style={{ borderColor: `${primary}40` }} />
+                  ) : (
+                    <div className="w-24 h-24 rounded-3xl flex items-center justify-center text-5xl border shadow-2xl" style={{ background: `${primary}18`, borderColor: `${primary}30` }}>✂️</div>
+                  )}
+                  <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-400 rounded-full border-2 flex items-center justify-center" style={{ borderColor: bg }}><span className="text-[9px]">✓</span></span>
+                </div>
+                <div>
+                  <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight" style={{ color: accent }}>{shop?.shop_name || "Barbershop"}</h1>
+                  <p className="mt-2 text-sm sm:text-base leading-relaxed" style={{ color: `${accent}90` }}>{shop?.shop_tagline || "Tampil Kece, Harga Terjangkau"}</p>
+                </div>
+                <OpenStatus open={shop?.operating_open ?? null} close={shop?.operating_close ?? null} />
+                {shop?.whatsapp_owner && (
+                  <a href={`https://wa.me/${shop.whatsapp_owner.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium transition-opacity hover:opacity-80" style={{ color: "#4ade80" }}>
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"/></svg>
+                    Hubungi via WhatsApp
+                  </a>
+                )}
+              </div>
+            </section>
 
-        {/* --- TAB: PROFIL --- */}
-        {activeTab === "profile" && (
-          <div className="px-4 space-y-4 animate-in fade-in duration-300">
+            {/* SERVICES */}
+            <section className="max-w-lg mx-auto px-5 pb-6">
+              <p className="text-[11px] uppercase tracking-widest font-semibold mb-3" style={{ color: `${accent}50` }}>Layanan Kami</p>
+              <div className="grid grid-cols-2 gap-3">
+                <Link href="/book?type=barbershop" onClick={handleBookClick} className="group p-4 rounded-2xl border flex items-center gap-3 transition-all active:scale-95" style={{ background: surface, borderColor: `${primary}25` }}>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0" style={{ background: `${primary}15` }}>✂️</div>
+                  <div>
+                    <p className="font-bold text-sm" style={{ color: accent }}>Barbershop</p>
+                    <p className="text-xs mt-0.5" style={{ color: `${accent}60` }}>Potong di tempat →</p>
+                  </div>
+                </Link>
+                {shop?.is_home_service_enabled && (
+                  <Link href="/book?type=home" onClick={handleBookClick} className="group p-4 rounded-2xl border flex items-center gap-3 transition-all active:scale-95" style={{ background: surface, borderColor: `${secondary}25` }}>
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0" style={{ background: `${secondary}15` }}>🏠</div>
+                    <div>
+                      <p className="font-bold text-sm" style={{ color: accent }}>Home Service</p>
+                      <p className="text-xs mt-0.5" style={{ color: `${accent}60` }}>Panggil ke rumah →</p>
+                    </div>
+                  </Link>
+                )}
+              </div>
+            </section>
+
+            {/* BARBERS */}
+            {shop?.barbers && shop.barbers.length > 0 && (
+              <section className="max-w-lg mx-auto px-5 pb-6">
+                <p className="text-[11px] uppercase tracking-widest font-semibold mb-3" style={{ color: `${accent}50` }}>Tim Barber</p>
+                <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+                  {shop.barbers.map(barber => (
+                    <Link key={barber.id} href="/book" onClick={handleBookClick} className="flex-shrink-0 w-24 text-center space-y-2 group active:scale-95 transition-all">
+                      <div className="w-20 h-20 mx-auto rounded-2xl overflow-hidden border-2" style={{ borderColor: `${primary}30`, background: surface }}>
+                        {barber.photo_url ? <img src={barber.photo_url} alt={barber.name} className="w-full h-full object-cover group-hover:opacity-90 transition-opacity" /> : <div className="w-full h-full flex items-center justify-center text-3xl" style={{ background: `${primary}10` }}>👤</div>}
+                      </div>
+                      <p className="text-xs font-semibold leading-tight truncate" style={{ color: accent }}>{barber.name}</p>
+                      {barber.specialty && <p className="text-[10px] leading-tight truncate" style={{ color: `${accent}50` }}>{barber.specialty}</p>}
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* POST FEED */}
+            <section className="max-w-lg mx-auto px-5 pb-6">
+              <div className="border-t pt-6" style={{ borderColor: `${surface}80` }}>
+                <PostFeed showTitle={true} />
+              </div>
+            </section>
+          </div>
+        )}
+
+        {/* =========================================================
+            TAB: PROFIL (Hanya terlihat jika login)
+            ========================================================= */}
+        {activeTab === "profile" && user && (
+          <div className="max-w-lg mx-auto px-5 py-6 space-y-4 animate-in fade-in duration-300">
             {/* Profile Card */}
-            <div className="glass p-6 rounded-2xl border border-neutral-800/50">
+            <div className="p-6 rounded-2xl border shadow-lg" style={{ background: surface, borderColor: `${surface}80` }}>
               <div className="flex justify-between items-start mb-5">
-                <h2 className="text-base font-semibold text-primary flex items-center gap-2">👤 Profil Saya</h2>
-                <button onClick={handleEditOpen} className="text-xs text-primary hover:text-primary-hover border border-primary/30 hover:border-primary-hover px-3 py-1.5 rounded-full transition-all flex items-center gap-1.5">
+                <h2 className="text-base font-semibold flex items-center gap-2" style={{ color: primary }}>👤 Profil Saya</h2>
+                <button onClick={handleEditOpen} className="text-xs px-3 py-1.5 rounded-full border transition-all flex items-center gap-1.5"
+                  style={{ color: primary, borderColor: `${primary}30` }}>
                   ✏️ Edit Profil
                 </button>
               </div>
-
               <div className="flex items-center gap-4 mb-5">
                 {user.photoUrl ? (
-                  <img src={user.photoUrl} alt="Profile" className="w-20 h-20 rounded-full object-cover border-2 border-primary/50 shadow-lg shadow-primary/10" />
+                  <img src={user.photoUrl} alt="Profile" className="w-20 h-20 rounded-full object-cover border-2 shadow-lg" style={{ borderColor: `${primary}50` }} />
                 ) : (
-                  <div className="w-20 h-20 rounded-full bg-neutral-800 border-2 border-neutral-700 flex items-center justify-center text-3xl">👤</div>
+                  <div className="w-20 h-20 rounded-full flex items-center justify-center text-3xl border-2" style={{ background: `${bg}`, borderColor: `${surface}80` }}>👤</div>
                 )}
                 <div>
                   <h3 className="font-bold text-xl">{user.name}</h3>
-                  <p className="text-xs text-neutral-400 font-mono mt-1">📱 {user.phoneNumber}</p>
-                  <span className="mt-1.5 inline-block text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">Member</span>
+                  <p className="text-xs font-mono mt-1" style={{ color: `${accent}70` }}>📱 {user.phoneNumber}</p>
+                  <span className="mt-1.5 inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border" style={{ color: primary, background: `${primary}10`, borderColor: `${primary}20` }}>Member</span>
                 </div>
               </div>
-
               <div className="grid grid-cols-1 gap-3">
-                <div className="bg-neutral-900/50 p-3 rounded-xl border border-neutral-800/50">
-                  <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-semibold mb-1">📍 Alamat</p>
-                  <p className="text-sm text-white">{user.address || <span className="text-neutral-500 italic">Belum diisi</span>}</p>
+                <div className="p-3 rounded-xl border" style={{ background: bg, borderColor: `${surface}80` }}>
+                  <p className="text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: `${accent}50` }}>📍 Alamat</p>
+                  <p className="text-sm">{user.address || <span className="italic" style={{ color: `${accent}40` }}>Belum diisi</span>}</p>
                 </div>
-                <div className="bg-neutral-900/50 p-3 rounded-xl border border-neutral-800/50">
-                  <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-semibold mb-1">🎯 Hobi</p>
-                  <p className="text-sm text-emerald-400">{user.hobbies || <span className="text-neutral-500 italic">Belum diisi</span>}</p>
+                <div className="p-3 rounded-xl border" style={{ background: bg, borderColor: `${surface}80` }}>
+                  <p className="text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: `${accent}50` }}>🎯 Hobi</p>
+                  <p className="text-sm">{user.hobbies || <span className="italic" style={{ color: `${accent}40` }}>Belum diisi</span>}</p>
                 </div>
               </div>
             </div>
 
             {/* Stats Card */}
-            <div className="glass p-6 rounded-2xl border border-neutral-800/50">
-              <h2 className="text-base font-semibold mb-4 text-primary flex items-center gap-2">🏆 Statistik Member</h2>
+            <div className="p-6 rounded-2xl border shadow-lg" style={{ background: surface, borderColor: `${surface}80` }}>
+              <h2 className="text-base font-semibold mb-4 flex items-center gap-2" style={{ color: primary }}>🏆 Statistik Member</h2>
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-neutral-900/50 p-4 rounded-xl border border-neutral-800/50 text-center">
-                  <p className="text-3xl font-bold text-white">{stats?.totalHaircuts || 0}</p>
-                  <p className="text-xs text-neutral-500 uppercase tracking-wider font-semibold mt-1">Total Cukur</p>
+                <div className="p-4 rounded-xl border text-center" style={{ background: bg, borderColor: `${surface}80` }}>
+                  <p className="text-3xl font-bold">{stats?.totalHaircuts || 0}</p>
+                  <p className="text-xs uppercase tracking-wider font-semibold mt-1" style={{ color: `${accent}50` }}>Total Cukur</p>
                 </div>
-                <div className="bg-neutral-900/50 p-4 rounded-xl border border-neutral-800/50 text-center">
-                  <p className="text-base font-bold text-primary-hover truncate">{stats?.favoriteBarber || "—"}</p>
-                  <p className="text-xs text-neutral-500 uppercase tracking-wider font-semibold mt-1">Barber Favorit</p>
+                <div className="p-4 rounded-xl border text-center" style={{ background: bg, borderColor: `${surface}80` }}>
+                  <p className="text-base font-bold truncate" style={{ color: primary }}>{stats?.favoriteBarber || "—"}</p>
+                  <p className="text-xs uppercase tracking-wider font-semibold mt-1" style={{ color: `${accent}50` }}>Barber Favorit</p>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* --- TAB: BERANDA --- */}
-        {activeTab === "home" && (
-          <div className="px-4 space-y-4 animate-in fade-in duration-300">
-
-            {/* Pengumuman & Promo */}
-            <PostFeed showTitle={true} />
-
-            <div className="glass p-8 rounded-2xl border border-neutral-800/50">
-              <h2 className="text-xl font-semibold mb-3 text-primary flex items-center gap-2">📅 Pesan Jadwal Baru</h2>
-              <p className="text-neutral-400 mb-6 text-sm leading-relaxed">
-                Moro Lungguh Mulih Ngguanteng! Jadwalkan potong rambut dengan barber favorit Anda di barbershop atau langsung di rumah Anda.
-              </p>
-              <Link href="/book" className="inline-block w-full text-center py-4 btn-primary text-background font-bold rounded-xl transition-all shadow-lg hover:shadow-primary/20 text-lg">
-                ✂️ Pesan Layanan Sekarang
-              </Link>
-            </div>
-
-            {/* Quick Tip */}
-            <div className="glass p-5 rounded-2xl border border-neutral-800/50">
-              <h3 className="text-sm font-semibold text-neutral-300 mb-2 flex items-center gap-2">💡 Tips</h3>
-              <p className="text-xs text-neutral-500 leading-relaxed">
-                Pesan minimal H-1 sebelum jadwal Anda. Barber kami aktif 7 hari seminggu. Untuk Home Service, pastikan alamat profil Anda sudah diperbarui.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* --- TAB: RIWAYAT --- */}
-        {activeTab === "history" && (
-          <div className="px-4 animate-in fade-in duration-300">
-            <div className="glass p-6 rounded-2xl border border-neutral-800/50">
-              <h2 className="text-xl font-semibold mb-5 text-primary flex items-center gap-2">📜 Riwayat Pesanan</h2>
+        {/* =========================================================
+            TAB: HISTORY (Hanya terlihat jika login)
+            ========================================================= */}
+        {activeTab === "history" && user && (
+          <div className="max-w-lg mx-auto px-5 py-6 animate-in fade-in duration-300">
+            <div className="p-6 rounded-2xl border shadow-lg" style={{ background: surface, borderColor: `${surface}80` }}>
+              <h2 className="text-xl font-semibold mb-5 flex items-center gap-2" style={{ color: primary }}>📜 Riwayat Pesanan</h2>
               <div className="space-y-4">
                 {history.length === 0 ? (
-                  <div className="py-16 flex flex-col items-center justify-center text-neutral-500 space-y-3">
+                  <div className="py-16 flex flex-col items-center justify-center space-y-3" style={{ color: `${accent}50` }}>
                     <span className="text-5xl">💈</span>
                     <p className="text-sm">Belum ada riwayat pesanan.</p>
-                    <button onClick={() => setActiveTab("home")} className="mt-2 text-sm text-primary hover:text-primary-hover border border-primary/30 px-4 py-2 rounded-lg transition-all">
+                    <Link href="/book" className="mt-2 text-sm px-4 py-2 rounded-lg border transition-all" style={{ color: primary, borderColor: `${primary}30` }}>
                       Buat Pesanan Pertama
-                    </button>
+                    </Link>
                   </div>
                 ) : (
                   history.map((booking, index) => {
                     const date = new Date(booking.start_time);
                     const isUpcoming = date > new Date() && booking.status !== 'cancelled';
                     return (
-                      <div key={booking.id || index} className={`p-4 rounded-xl border ${isUpcoming ? 'bg-primary/5 border-primary/20' : 'bg-neutral-900/30 border-neutral-800/50'}`}>
+                      <div key={booking.id || index} className="p-4 rounded-xl border" style={{ background: isUpcoming ? `${primary}10` : bg, borderColor: isUpcoming ? `${primary}30` : `${surface}80` }}>
                         <div className="flex justify-between items-start mb-2 gap-4">
-                          <span className="font-semibold text-white">{booking.services?.name || 'Paket Cukur'}</span>
+                          <span className="font-semibold">{booking.services?.name || 'Paket Cukur'}</span>
                           <div className="flex flex-col items-end gap-1">
-                            <span className="text-primary-hover font-bold whitespace-nowrap">${booking.services?.price || '-'}</span>
-                            {isUpcoming && <span className="text-[10px] uppercase tracking-wider font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-md whitespace-nowrap">Akan Datang</span>}
+                            <span className="font-bold whitespace-nowrap" style={{ color: primary }}>${booking.services?.price || '-'}</span>
+                            {isUpcoming && <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-md whitespace-nowrap" style={{ color: primary, background: `${primary}20` }}>Akan Datang</span>}
                           </div>
                         </div>
-                        <div className="text-sm text-neutral-400 space-y-1">
+                        <div className="text-sm space-y-1" style={{ color: `${accent}70` }}>
                           <p className="flex justify-between">
                             <span>👤 By {booking.barbers?.name || 'Barber'}</span>
-                            <span className="text-xs">{booking.service_type === 'home' ? '🏠 Home' : '💈 Shop'}</span>
+                            <span className="text-xs w-[60px] text-right">{booking.service_type === 'home' ? '🏠 Home' : '💈 Shop'}</span>
                           </p>
-                          <p className="flex items-center gap-1 mt-1 text-xs text-neutral-500">
+                          <p className="flex items-center gap-1 mt-1 text-xs" style={{ color: `${accent}50` }}>
                             <span>🕒</span> {date.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}
                           </p>
                         </div>
@@ -285,97 +480,101 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
-      </div>
 
-      {/* ===== BOTTOM NAVIGATION BAR ===== */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-neutral-950/95 backdrop-blur-lg border-t border-neutral-800/60 px-4 py-2 safe-area-bottom">
-        <div className="max-w-2xl mx-auto flex justify-around items-center">
+      </main>
 
-          {/* Tab: Profil */}
-          <button
-            onClick={() => setActiveTab("profile")}
-            className={`flex flex-col items-center gap-1 py-2 px-6 rounded-xl transition-all duration-200 ${activeTab === "profile" ? "text-primary" : "text-neutral-500 hover:text-neutral-300"}`}
-          >
-            <span className="text-2xl">{user.photoUrl ? <img src={user.photoUrl} alt="" className={`w-7 h-7 rounded-full object-cover ${activeTab === "profile" ? "ring-2 ring-primary" : "ring-1 ring-neutral-700"}`} /> : "👤"}</span>
-            <span className={`text-[10px] font-semibold uppercase tracking-wide ${activeTab === "profile" ? "text-primary" : ""}`}>Profil</span>
-            {activeTab === "profile" && <span className="absolute bottom-2 w-1 h-1 bg-primary rounded-full" />}
+      {/* ── STICKY BOTTOM NAVIGATION BAR ────────────────────── */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t px-4 py-2 pb-safe shadow-2xl"
+        style={{ background: `${bg}F2`, backdropFilter: "blur(12px)", borderColor: `${surface}90` }}>
+        <div className="max-w-lg mx-auto flex justify-around items-center">
+          
+          {/* Tab: Home */}
+          <button onClick={() => handleTabChange("home")} className="flex flex-col items-center gap-1 py-1 w-16 transition-all">
+            <span className={`text-2xl transition-transform ${activeTab === "home" ? "scale-110 grayscale-0" : "grayscale saturate-0 opacity-60"}`}>🏠</span>
+            <span className="text-[9px] font-bold uppercase tracking-wider mt-0.5" style={{ color: activeTab === "home" ? primary : `${accent}60` }}>Beranda</span>
+            <div className={`h-1 w-1 rounded-full bg-current transition-all ${activeTab === "home" ? "opacity-100" : "opacity-0"}`} style={{ color: primary }} />
           </button>
 
-          {/* Tab: Pesan (center - highlighted) */}
-          <button
-            onClick={() => setActiveTab("home")}
-            className={`flex flex-col items-center gap-1 py-2 px-6 rounded-xl transition-all duration-200 relative`}
-          >
-            <span className={`text-3xl block transition-transform duration-200 ${activeTab === "home" ? "scale-110" : ""}`}>✂️</span>
-            <span className={`text-[10px] font-semibold uppercase tracking-wide ${activeTab === "home" ? "text-primary" : "text-neutral-500"}`}>Pesan</span>
-          </button>
+          {/* Floating Action / Tab: Booking */}
+          <Link href="/book" onClick={handleBookClick} className="relative -top-5 flex flex-col items-center gap-1 transition-all active:scale-95 group">
+            <div className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg border-4"
+              style={{ background: primary, color: "#000", borderColor: bg, boxShadow: `0 8px 20px ${primary}40` }}>
+              <span className="text-2xl group-hover:scale-110 transition-transform">✂️</span>
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: primary }}>Booking</span>
+          </Link>
 
           {/* Tab: Riwayat */}
-          <button
-            onClick={() => setActiveTab("history")}
-            className={`flex flex-col items-center gap-1 py-2 px-6 rounded-xl transition-all duration-200 ${activeTab === "history" ? "text-primary" : "text-neutral-500 hover:text-neutral-300"}`}
-          >
-            <span className="text-2xl">📜</span>
-            <span className={`text-[10px] font-semibold uppercase tracking-wide ${activeTab === "history" ? "text-primary" : ""}`}>Riwayat</span>
+          <button onClick={() => handleTabChange("history")} className="flex flex-col items-center gap-1 py-1 w-16 transition-all">
+            <span className={`text-2xl transition-transform ${activeTab === "history" ? "scale-110 grayscale-0" : "grayscale saturate-0 opacity-60"}`}>📜</span>
+            <span className="text-[9px] font-bold uppercase tracking-wider mt-0.5" style={{ color: activeTab === "history" ? primary : `${accent}60` }}>Riwayat</span>
+            <div className={`h-1 w-1 rounded-full bg-current transition-all ${activeTab === "history" ? "opacity-100" : "opacity-0"}`} style={{ color: primary }} />
+          </button>
+
+          {/* Tab: Profil */}
+          <button onClick={() => handleTabChange("profile")} className="flex flex-col items-center gap-1 py-1 w-16 transition-all">
+            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-sm border-2 transition-transform ${activeTab === "profile" ? "scale-110" : ""}`}
+              style={{ borderColor: activeTab === "profile" ? primary : "transparent", background: user ? "transparent" : `${accent}20` }}>
+              {user?.photoUrl ? <img src={user.photoUrl} alt="P" className="w-full h-full rounded-full object-cover" /> : "👤"}
+            </div>
+            <span className="text-[9px] font-bold uppercase tracking-wider mt-1" style={{ color: activeTab === "profile" ? primary : `${accent}60` }}>Profil</span>
+            <div className={`h-1 w-1 rounded-full bg-current transition-all ${activeTab === "profile" ? "opacity-100" : "opacity-0"}`} style={{ color: primary }} />
           </button>
 
         </div>
       </nav>
 
-      {/* ===== EDIT PROFILE MODAL ===== */}
+      {/* ── EDIT PROFILE MODAL ──────────────────────────────── */}
       {isEditing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-neutral-900 border border-neutral-800 w-full max-w-md rounded-2xl p-6 shadow-2xl">
-            <h2 className="text-xl font-bold mb-6">✏️ Edit Profil Saya</h2>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl p-6 shadow-2xl border" style={{ background: surface, borderColor: `${surface}80` }}>
+            <h2 className="text-xl font-bold mb-6 flex items-center gap-2">✏️ Edit Profil Saya</h2>
             <form onSubmit={handleEditSave} className="space-y-4">
               <div>
-                <label className="block text-xs text-neutral-400 mb-1">Nama Lengkap</label>
+                <label className="block text-xs mb-1" style={{ color: `${accent}70` }}>Nama Lengkap</label>
                 <input type="text" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary" required />
+                  className="w-full rounded-xl px-4 py-3 border focus:outline-none transition-colors"
+                  style={{ background: bg, color: accent, borderColor: `${surface}80`, outlineColor: primary }} required />
               </div>
-
               <div>
-                <label className="block text-xs text-neutral-400 mb-2">Foto Profil</label>
+                <label className="block text-xs mb-2" style={{ color: `${accent}70` }}>Foto Profil</label>
                 <div className="flex items-center gap-4">
                   {editData.photoUrl ? (
-                    <img src={editData.photoUrl} alt="Preview" className="w-14 h-14 rounded-full object-cover border-2 border-primary/50" />
+                    <img src={editData.photoUrl} alt="Preview" className="w-14 h-14 rounded-full object-cover border-2" style={{ borderColor: `${primary}50` }} />
                   ) : (
-                    <div className="w-14 h-14 rounded-full bg-neutral-800 border-2 border-neutral-700 flex items-center justify-center text-xl">👤</div>
+                    <div className="w-14 h-14 rounded-full flex items-center justify-center text-xl" style={{ background: bg }}>👤</div>
                   )}
-                  <label className="cursor-pointer bg-neutral-800 hover:bg-neutral-700 text-sm py-2 px-4 rounded-lg inline-block transition-colors border border-neutral-700">
-                    {uploadingPhoto ? '⏳ Mengupload...' : '📷 Pilih Foto dari HP/PC'}
+                  <label className="cursor-pointer text-sm py-2 px-4 rounded-xl border transition-all"
+                    style={{ background: bg, borderColor: `${surface}80` }}>
+                    {uploadingPhoto ? '⏳ Mengupload...' : '📷 Pilih Foto'}
                     <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" disabled={uploadingPhoto} />
                   </label>
                 </div>
               </div>
-
               <div>
-                <label className="block text-xs text-neutral-400 mb-1">Hobi / Ketertarikan</label>
+                <label className="block text-xs mb-1" style={{ color: `${accent}70` }}>Hobi / Ketertarikan</label>
                 <input type="text" value={editData.hobbies} onChange={e => setEditData({...editData, hobbies: e.target.value})}
-                  placeholder="Misal: Sepakbola, Modifikasi Motor, Musik"
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary" />
+                  placeholder="Opsional: Sepakbola, Musik" className="w-full rounded-xl px-4 py-3 border focus:outline-none transition-colors"
+                  style={{ background: bg, color: accent, borderColor: `${surface}80`, outlineColor: primary }} />
               </div>
-
               <div>
-                <label className="block text-xs text-neutral-400 mb-1">Alamat (Home Service)</label>
+                <label className="block text-xs mb-1" style={{ color: `${accent}70` }}>Alamat (Home Service)</label>
                 <textarea value={editData.address} onChange={e => setEditData({...editData, address: e.target.value})}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-primary min-h-[80px]" />
+                  className="w-full rounded-xl px-4 py-3 border focus:outline-none min-h-[80px] transition-colors"
+                  style={{ background: bg, color: accent, borderColor: `${surface}80`, outlineColor: primary }} />
               </div>
-
-              <div className="flex justify-end gap-3 mt-2">
-                <button type="button" onClick={() => setIsEditing(false)}
-                  className="px-4 py-2 text-neutral-400 hover:text-white transition-colors">
-                  Batal
-                </button>
-                <button type="submit" disabled={savingProfile}
-                  className="px-6 py-2 btn-primary text-background font-bold rounded-lg transition-colors disabled:opacity-50">
-                  {savingProfile ? 'Menyimpan...' : 'Simpan Perubahan'}
+              <div className="flex justify-end gap-3 mt-4">
+                <button type="button" onClick={() => setIsEditing(false)} className="px-5 py-2.5 rounded-xl font-medium" style={{ color: `${accent}70` }}>Batal</button>
+                <button type="submit" disabled={savingProfile} className="px-6 py-2.5 rounded-xl font-bold transition-all disabled:opacity-50 text-black shadow-lg"
+                  style={{ background: primary, boxShadow: `0 4px 15px ${primary}40` }}>
+                  {savingProfile ? 'Meyimpan...' : 'Simpan Profil'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-    </main>
+
+    </>
   );
 }
