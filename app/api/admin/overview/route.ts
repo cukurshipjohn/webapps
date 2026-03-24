@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createTenantClient } from '@/lib/supabase';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getUserFromToken, requireRole } from '@/lib/auth';
 
@@ -39,51 +38,58 @@ export async function GET(request: NextRequest) {
         const ew_d = String(endOfWeekDummy.getUTCDate()).padStart(2, '0');
         const endOfWeekWIB = new Date(`${ew_y}-${ew_m}-${ew_d}T23:59:59.999+07:00`);
         
-        const tenantClient = createTenantClient(user.tenant_id!);
+        const tenantId = user.tenant_id!;
 
-        // --- 2. Parallel Supabase Queries (Isolated via tenant_id JWT context) ---
+        // --- 2. Parallel Supabase Queries (tenant-isolated with explicit .eq) ---
         const bookingsPromises = [
             // [0] Total Bookings Today (confirmed, completed)
-            tenantClient.from('bookings').select('id', { count: 'exact', head: true })
+            supabaseAdmin.from('bookings').select('id', { count: 'exact', head: true })
+                .eq('tenant_id', tenantId)
                 .in('status', ['confirmed', 'completed'])
                 .gte('start_time', startOfTodayWIB.toISOString())
                 .lte('start_time', endOfTodayWIB.toISOString()),
                 
             // [1] Total Bookings This Week
-            tenantClient.from('bookings').select('id', { count: 'exact', head: true })
+            supabaseAdmin.from('bookings').select('id', { count: 'exact', head: true })
+                .eq('tenant_id', tenantId)
                 .in('status', ['confirmed', 'completed'])
                 .gte('start_time', startOfWeekWIB.toISOString())
                 .lte('start_time', endOfWeekWIB.toISOString()),
 
             // [2] Revenue Today (Completed only)
-            tenantClient.from('bookings').select('services(price)')
+            supabaseAdmin.from('bookings').select('services(price)')
+                .eq('tenant_id', tenantId)
                 .eq('status', 'completed')
                 .gte('start_time', startOfTodayWIB.toISOString())
                 .lte('start_time', endOfTodayWIB.toISOString()),
 
             // [3] Revenue This Month (Completed only)
-            tenantClient.from('bookings').select('services(price)')
+            supabaseAdmin.from('bookings').select('services(price)')
+                .eq('tenant_id', tenantId)
                 .eq('status', 'completed')
                 .gte('start_time', startOfMonthWIB.toISOString())
                 .lte('start_time', endOfMonthWIB.toISOString()),
 
             // [4] Active Barbers
-            tenantClient.from('barbers').select('id', { count: 'exact', head: true }),
+            supabaseAdmin.from('barbers').select('id', { count: 'exact', head: true })
+                .eq('tenant_id', tenantId),
 
             // [5] Upcoming Bookings (Confirmed, > Now)
-            tenantClient.from('bookings').select(`
+            supabaseAdmin.from('bookings').select(`
                 id, start_time, end_time, service_type,
                 users(name, phone_number),
                 barbers(name),
                 services(name, price)
             `)
+            .eq('tenant_id', tenantId)
             .eq('status', 'confirmed')
             .gte('start_time', now.toISOString())
             .order('start_time', { ascending: true })
             .limit(5),
             
             // [6] Get Barbers Info for 'Active Barbers' section list
-            tenantClient.from('barbers').select('id, name, specialty, photo_url')
+            supabaseAdmin.from('barbers').select('id, name, specialty, photo_url')
+                .eq('tenant_id', tenantId)
                 .order('name', { ascending: true })
         ];
 

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createTenantClient, supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { getUserFromToken, requireRole } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
@@ -15,9 +15,10 @@ export async function GET(request: NextRequest) {
         const startDateParam = searchParams.get('start_date');
         const endDateParam = searchParams.get('end_date');
 
-        const tenantClient = createTenantClient(user.tenant_id!);
+        const tenantId = user.tenant_id;
+        if (!tenantId) return NextResponse.json({ message: 'Tenant tidak ditemukan.' }, { status: 403 });
 
-        let query = tenantClient
+        let query = supabaseAdmin
             .from('bookings')
             .select(`
                 id, 
@@ -31,6 +32,7 @@ export async function GET(request: NextRequest) {
                 barbers ( name ),
                 services ( name, price )
             `)
+            .eq('tenant_id', tenantId)
             .order('start_time', { ascending: false });
 
         if (statusFilter && statusFilter !== 'all') {
@@ -86,16 +88,14 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ message: 'Status tidak valid.' }, { status: 400 });
         }
         
-        const tenantClient = createTenantClient(user.tenant_id!);
+        
 
-        // Cek dan dapatkan data booking lama
-        const { data: bookingData, error: findError } = await tenantClient
+        // Cek data booking lama
+        const { data: bookingData, error: findError } = await supabaseAdmin
             .from('bookings')
-            .select(`
-                id, start_time, tenant_id,
-                users ( name, phone_number )
-            `)
+            .select(`id, start_time, tenant_id, users(name, phone_number)`)
             .eq('id', id)
+            .eq('tenant_id', user.tenant_id!)
             .single();
             
         if (findError || !bookingData) {
@@ -103,10 +103,11 @@ export async function PATCH(request: NextRequest) {
         }
         
         // Update database
-        const { error: updateError } = await tenantClient
+        const { error: updateError } = await supabaseAdmin
             .from('bookings')
             .update({ status })
-            .eq('id', id);
+            .eq('id', id)
+            .eq('tenant_id', user.tenant_id!);
             
         if (updateError) throw updateError;
 

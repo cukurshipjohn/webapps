@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createTenantClient, supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { getUserFromToken, requireRole } from '@/lib/auth';
 
 // ── Helpers ──────────────────────────────────────────────
