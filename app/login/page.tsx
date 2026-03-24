@@ -68,7 +68,7 @@ function LoginContent() {
         ? redirectParams
         : null;
 
-      // Login pelanggan SELALU ke /dashboard (atau safeRedirect yang valid).
+      // Login pelanggan SELALU ke /store (atau safeRedirect yang valid).
       // Owner yang ingin ke admin panel WAJIB pakai /admin/login.
       if (data.requireProfileCompletion) {
         const redirectUrl = safeRedirect
@@ -76,7 +76,7 @@ function LoginContent() {
           : "/profile/complete";
         router.push(redirectUrl);
       } else {
-        router.push(safeRedirect || "/dashboard");
+        router.push(safeRedirect || "/store");
       }
     } catch (err: any) {
       setError(err.message || "Kode OTP tidak valid atau sudah kadaluarsa.");

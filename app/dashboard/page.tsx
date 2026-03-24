@@ -142,7 +142,12 @@ export default function DashboardPage() {
         {/* ===== TOP HEADER ===== */}
         <header className="flex justify-between items-center p-6 pt-10 pb-4">
           <div>
-            <h1 className="text-xl font-bold tracking-tight">John<span className="text-primary">CukurShip</span></h1>
+            <div className="flex items-center gap-3 mb-1">
+              <h1 className="text-xl font-bold tracking-tight">John<span className="text-primary">CukurShip</span></h1>
+              <Link href="/store" className="text-[10px] font-bold px-2 py-0.5 rounded border border-primary/30 text-primary hover:bg-primary/10 transition-colors">
+                🏠 HOME
+              </Link>
+            </div>
             <p className="text-neutral-400 text-sm mt-0.5">Selamat datang, <span className="text-white font-medium">{user.name}</span> 👋</p>
           </div>
           <button
