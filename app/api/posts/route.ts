@@ -1,16 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getUserFromToken } from '@/lib/auth';
 
 const PAGE_SIZE = 10;
 
 // ── GET /api/posts — Public feed posts untuk tenant ───────
-// Tidak butuh auth. tenant_id dibaca dari header x-tenant-id
-// (diset oleh proxy.ts berdasarkan subdomain).
+// Tidak butuh auth. tenant_id dibaca dari:
+// 1. Header x-tenant-id (diset oleh proxy.ts dari subdomain)
+// 2. JWT token user (fallback untuk localhost:3000/dashboard)
 export async function GET(request: NextRequest) {
     try {
-        const tenantId = request.headers.get('x-tenant-id');
+        // Priority 1: header dari proxy subdomain
+        let tenantId = request.headers.get('x-tenant-id');
+
+        // Priority 2: JWT token fallback (localhost / tanpa subdomain)
         if (!tenantId) {
-            // Bukan subdomain tenant → kembalikan data kosong, bukan error
+            const user = getUserFromToken(request);
+            if (user?.tenant_id) {
+                tenantId = user.tenant_id;
+            }
+        }
+
+        if (!tenantId) {
+            // Bukan subdomain tenant & tidak ada token → kembalikan data kosong
             return NextResponse.json({ data: [], page: 1, has_more: false });
         }
 
