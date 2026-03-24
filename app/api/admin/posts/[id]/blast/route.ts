@@ -105,17 +105,20 @@ export async function POST(
         // ── Check subscription plan ────────────────────────
         const { data: tenant, error: tenantErr } = await supabaseAdmin
             .from('tenants')
-            .select('id, name, subdomain, plan_key')
+            .select('id, name, subdomain, plan')
             .eq('id', tenantId)
             .single();
 
-        if (tenantErr || !tenant) return NextResponse.json({ message: 'Tenant tidak ditemukan.' }, { status: 404 });
+        if (tenantErr || !tenant) {
+            console.error('Tenant fetch error in blast WA:', tenantErr);
+            return NextResponse.json({ message: 'Tenant tidak ditemukan.' }, { status: 404 });
+        }
 
-        if (!BLAST_ALLOWED_PLANS.includes(tenant.plan_key)) {
+        if (!BLAST_ALLOWED_PLANS.includes(tenant.plan || 'starter')) {
             return NextResponse.json({
                 message: `Fitur Blast WA hanya tersedia untuk paket Pro dan Business. Upgrade paket Anda.`,
                 upgrade_required: true,
-                current_plan: tenant.plan_key,
+                current_plan: tenant.plan || 'starter',
             }, { status: 403 });
         }
 
@@ -184,7 +187,7 @@ export async function POST(
             return NextResponse.json({
                 total_target,
                 already_sent: sentIds.size,
-                plan: tenant.plan_key,
+                plan: tenant.plan || 'starter',
                 session_id: sessionId,
             });
         }

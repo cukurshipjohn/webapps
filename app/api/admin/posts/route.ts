@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 
         // Get tenant plan for blast feature gating
         const { data: tenant } = await supabaseAdmin
-            .from('tenants').select('plan_key').eq('id', tenantId).single();
+            .from('tenants').select('plan').eq('id', tenantId).single();
 
         // Flatten notification count
         const posts = (rawPosts || []).map((p: any) => {
@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({
             posts,
-            plan_key: tenant?.plan_key || 'starter',
+            plan_key: tenant?.plan || 'starter',
         });
 
     } catch (error: any) {
