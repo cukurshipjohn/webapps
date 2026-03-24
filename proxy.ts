@@ -138,11 +138,11 @@ export async function proxy(request: NextRequest) {
         requestHeaders.set('x-tenant-slug', tenant.slug);
         requestHeaders.set('x-shop-name', tenant.shop_name);
 
-        // ─── AUTO REDIRECT: / → /book ──────────────────────────────────────
+        // ─── AUTO REDIRECT: / → /store ──────────────────────────────────────
         // Ketika user membuka subdomain tenant (misal john.johncukurship.online/)
-        // langsung arahkan ke halaman booking utama mereka.
+        // arahkan ke halaman muka toko (store) yang menampilkan promo & info.
         if (pathname === '/' || pathname === '') {
-            return NextResponse.redirect(new URL('/book', request.url));
+            return NextResponse.redirect(new URL('/store', request.url));
         }
 
         return NextResponse.next({

@@ -61,10 +61,13 @@ function LoginContent() {
       if (!res.ok) throw new Error(data.message);
 
       localStorage.setItem("user", JSON.stringify(data.user));
-      
-      // Login pelanggan SELALU arahkan ke /dashboard — bukan ke /admin.
-      // Owner yang ingin ke admin panel harus melalui /admin/login secara terpisah.
-      if (data.requireProfileCompletion) {
+
+      // Owner/Superadmin → langsung ke admin panel.
+      // Keamanan dijaga oleh proxy.ts di server — customer biasa
+      // tidak bisa mengakses /admin meskipun URL-nya di-ketik secara langsung.
+      if (data.user.role === 'owner' || data.user.role === 'superadmin') {
+        router.push(redirectParams || "/admin");
+      } else if (data.requireProfileCompletion) {
         const redirectUrl = redirectParams ? `/profile/complete?redirect=${encodeURIComponent(redirectParams)}` : "/profile/complete";
         router.push(redirectUrl);
       } else {
