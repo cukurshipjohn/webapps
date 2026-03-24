@@ -87,9 +87,11 @@ async function processBlast(params: {
 // ── Route handler ─────────────────────────────────────────
 export async function POST(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
+        const { id: postId } = await params;
+
         const user = getUserFromToken(request);
         if (!user) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
         requireRole(['owner', 'superadmin'], user.role);
@@ -126,7 +128,7 @@ export async function POST(
         const { data: post, error: postErr } = await supabaseAdmin
             .from('posts')
             .select('id, type, title, body, promo_code, promo_discount_percent, expires_at, is_published')
-            .eq('id', params.id)
+            .eq('id', postId)
             .eq('tenant_id', tenantId)
             .single();
 
@@ -173,7 +175,7 @@ export async function POST(
         const { data: alreadySent } = await supabaseAdmin
             .from('notification_logs')
             .select('user_id')
-            .eq('post_id', params.id)
+            .eq('post_id', postId)
             .eq('status', 'sent');
 
         const sentIds = new Set((alreadySent || []).map(r => r.user_id));
@@ -231,7 +233,7 @@ export async function POST(
             // Upsert log (UNIQUE constraint prevents duplicate)
             await supabaseAdmin.from('notification_logs').upsert({
                 tenant_id: tenantId,
-                post_id: params.id,
+                post_id: postId,
                 user_id: target.id,
                 status: success ? 'sent' : 'failed',
                 sent_at: new Date().toISOString(),
