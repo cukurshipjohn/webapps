@@ -21,6 +21,14 @@ interface Barber {
   photo_url: string | null;
 }
 
+interface Service {
+  id: string;
+  name: string;
+  price: number;
+  duration_minutes: number;
+  service_type: string;
+}
+
 interface ShopInfo {
   shop_name: string;
   shop_tagline: string;
@@ -40,6 +48,7 @@ interface ShopInfo {
   is_home_service_enabled: boolean;
   slug: string | null;
   barbers: Barber[];
+  services: Service[];
 }
 
 type Tab = "profile" | "home" | "history";
@@ -332,24 +341,66 @@ export default function DashboardPage() {
             {/* SERVICES */}
             <section className="max-w-lg mx-auto px-5 pb-6">
               <p className="text-[11px] uppercase tracking-widest font-semibold mb-3" style={{ color: `${accent}50` }}>Layanan Kami</p>
-              <div className="grid grid-cols-2 gap-3">
-                <Link href="/book?type=barbershop" onClick={handleBookClick} className="group p-4 rounded-2xl border flex items-center gap-3 transition-all active:scale-95" style={{ background: surface, borderColor: `${primary}25` }}>
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0" style={{ background: `${primary}15` }}>✂️</div>
-                  <div>
-                    <p className="font-bold text-sm" style={{ color: accent }}>Barbershop</p>
-                    <p className="text-xs mt-0.5" style={{ color: `${accent}60` }}>Potong di tempat →</p>
-                  </div>
-                </Link>
-                {shop?.is_home_service_enabled && (
-                  <Link href="/book?type=home" onClick={handleBookClick} className="group p-4 rounded-2xl border flex items-center gap-3 transition-all active:scale-95" style={{ background: surface, borderColor: `${secondary}25` }}>
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0" style={{ background: `${secondary}15` }}>🏠</div>
+              {shop?.services && shop.services.length > 0 ? (
+                <div className="space-y-2">
+                  {/* Group by type: BARBERSHOP first, HOME second */}
+                  {['BARBERSHOP', 'HOME'].map(type => {
+                    const typeServices = shop.services.filter(s => s.service_type === type);
+                    if (typeServices.length === 0) return null;
+                    const typeEmoji = type === 'HOME' ? '🏠' : '✂️';
+                    const typeLabel = type === 'HOME' ? 'Home Service' : 'Di Barbershop';
+                    return (
+                      <div key={type}>
+                        <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5 flex items-center gap-1.5" style={{ color: `${accent}40` }}>
+                          {typeEmoji} {typeLabel}
+                        </p>
+                        <div className="space-y-1.5">
+                          {typeServices.map(svc => {
+                            const cleanName = svc.name.replace('HOME | ', '').replace('BARBER | ', '');
+                            const bookHref = `/book?type=${type === 'HOME' ? 'home' : 'barbershop'}&service=${svc.id}`;
+                            return (
+                              <Link key={svc.id} href={bookHref} onClick={handleBookClick}
+                                className="flex items-center justify-between p-3 rounded-xl border transition-all active:scale-95"
+                                style={{ background: surface, borderColor: `${primary}20` }}>
+                                <div>
+                                  <p className="font-semibold text-sm leading-tight" style={{ color: accent }}>{cleanName}</p>
+                                  <p className="text-[11px] mt-0.5" style={{ color: `${accent}50` }}>⏱ {svc.duration_minutes} menit</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-bold text-sm" style={{ color: primary }}>
+                                    Rp {svc.price.toLocaleString('id-ID')}
+                                  </p>
+                                  <p className="text-[10px]" style={{ color: `${accent}40` }}>Pesan →</p>
+                                </div>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                /* Fallback if no services in DB yet */
+                <div className="grid grid-cols-2 gap-3">
+                  <Link href="/book?type=barbershop" onClick={handleBookClick} className="group p-4 rounded-2xl border flex items-center gap-3 transition-all active:scale-95" style={{ background: surface, borderColor: `${primary}25` }}>
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0" style={{ background: `${primary}15` }}>✂️</div>
                     <div>
-                      <p className="font-bold text-sm" style={{ color: accent }}>Home Service</p>
-                      <p className="text-xs mt-0.5" style={{ color: `${accent}60` }}>Panggil ke rumah →</p>
+                      <p className="font-bold text-sm" style={{ color: accent }}>Barbershop</p>
+                      <p className="text-xs mt-0.5" style={{ color: `${accent}60` }}>Potong di tempat →</p>
                     </div>
                   </Link>
-                )}
-              </div>
+                  {shop?.is_home_service_enabled && (
+                    <Link href="/book?type=home" onClick={handleBookClick} className="group p-4 rounded-2xl border flex items-center gap-3 transition-all active:scale-95" style={{ background: surface, borderColor: `${secondary}25` }}>
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0" style={{ background: `${secondary}15` }}>🏠</div>
+                      <div>
+                        <p className="font-bold text-sm" style={{ color: accent }}>Home Service</p>
+                        <p className="text-xs mt-0.5" style={{ color: `${accent}60` }}>Panggil ke rumah →</p>
+                      </div>
+                    </Link>
+                  )}
+                </div>
+              )}
             </section>
 
             {/* BARBERS */}

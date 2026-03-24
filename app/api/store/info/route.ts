@@ -47,6 +47,14 @@ export async function GET(request: NextRequest) {
             .eq('tenant_id', tenantId)
             .order('name', { ascending: true });
 
+        // Fetch active services (public info: name, price, duration, type)
+        const { data: services } = await supabaseAdmin
+            .from('services')
+            .select('id, name, price, duration_minutes, service_type')
+            .eq('tenant_id', tenantId)
+            .order('service_type', { ascending: true })
+            .order('price', { ascending: true });
+
         return NextResponse.json({
             tenant_id:                tenantId,
             shop_name:                settings?.shop_name            || tenant?.shop_name || 'Barbershop',
@@ -67,9 +75,10 @@ export async function GET(request: NextRequest) {
             operating_open:           formatTime(settings?.operating_open  ?? null),
             operating_close:          formatTime(settings?.operating_close ?? null),
             is_home_service_enabled:  settings?.is_home_service_enabled ?? true,
-            // Slug & Barbers
+            // Slug, Barbers & Services
             slug:    tenant?.slug || null,
             barbers: barbers || [],
+            services: services || [],
         });
 
     } catch (error: any) {
