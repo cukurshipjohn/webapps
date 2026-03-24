@@ -14,6 +14,37 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id";
 
+  const ADMIN_ROLES = ['owner', 'superadmin', 'barber'];
+
+  // ── Lapisan Keamanan: Periksa role setelah render ──────────
+  useEffect(() => {
+    // Baca token dari cookie (fallback jika middleware dilewati)
+    const getCookie = (name: string) => {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop()?.split(';').shift();
+      return undefined;
+    };
+
+    const token = getCookie('token');
+    if (!token) {
+      router.replace('/admin/login');
+      return;
+    }
+
+    try {
+      // Decode JWT payload (tidak perlu verifikasi signature di klien)
+      const payloadBase64 = token.split('.')[1];
+      const payload = JSON.parse(atob(payloadBase64));
+
+      if (!ADMIN_ROLES.includes(payload.role)) {
+        router.replace('/admin/login?error=access_denied');
+      }
+    } catch {
+      router.replace('/admin/login?error=session_expired');
+    }
+  }, [router]);
+
   useEffect(() => {
     fetch("/api/admin/overview")
       .then(r => r.json())

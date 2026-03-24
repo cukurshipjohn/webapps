@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -15,8 +15,17 @@ export default function AdminLoginContent() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+
+  // Tampilkan pesan error dari middleware (access_denied / session_expired)
+  const errorParam = searchParams?.get("error");
+  const [error, setError] = useState(
+    errorParam === "access_denied"
+      ? "Akses Ditolak: Nomor HP Anda tidak memiliki hak akses admin."
+      : errorParam === "session_expired"
+      ? "Sesi Anda telah berakhir. Silakan login kembali."
+      : ""
+  );
 
   const handleRequestOTP = async (e: React.FormEvent) => {
     e.preventDefault();
