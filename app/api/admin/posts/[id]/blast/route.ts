@@ -105,7 +105,7 @@ export async function POST(
         // ── Check subscription plan ────────────────────────
         const { data: tenant, error: tenantErr } = await supabaseAdmin
             .from('tenants')
-            .select('id, shop_name, subdomain, plan')
+            .select('id, shop_name, slug, plan')
             .eq('id', tenantId)
             .single();
 
@@ -202,7 +202,7 @@ export async function POST(
 
         // ── Shop URL ──────────────────────────────────────
         const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || 'johncukurship.online';
-        const shopUrl = `https://${tenant.subdomain}.${appDomain}`;
+        const shopUrl = `https://${tenant.slug}.${appDomain}`;
         const shopName = tenant.shop_name;
 
         // ── Decide sync vs background ─────────────────────
