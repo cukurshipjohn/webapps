@@ -153,6 +153,50 @@ export default function DashboardPage() {
     }
   }, [router]);
 
+  // 2. Apply tenant theme as CSS custom properties on :root
+  // This makes ALL child components (PostFeed, nav, forms, etc.) inherit the correct colors.
+  useEffect(() => {
+    if (!shop) return;
+    const root = document.documentElement;
+    const primary = shop.color_primary || '#F59E0B';
+    const primHov = shop.color_primary_hover || '#D97706';
+    const secondary = shop.color_secondary || '#D97706';
+    const bg = shop.color_background || '#0A0A0A';
+    const surface = shop.color_surface || '#171717';
+    const accent = shop.color_accent || '#FFFFFF';
+    const useGrad = shop.use_gradient ?? false;
+
+    const btnBg = useGrad
+      ? `linear-gradient(to right, ${primary}, ${secondary})`
+      : primary;
+    const btnBgHover = useGrad
+      ? `linear-gradient(to right, ${primHov}, ${secondary})`
+      : primHov;
+
+    root.style.setProperty('--color-primary', primary);
+    root.style.setProperty('--color-primary-hover', primHov);
+    root.style.setProperty('--color-secondary', secondary);
+    root.style.setProperty('--color-background', bg);
+    root.style.setProperty('--color-surface', surface);
+    root.style.setProperty('--color-accent', accent);
+    root.style.setProperty('--theme-button-bg', btnBg);
+    root.style.setProperty('--theme-button-bg-hover', btnBgHover);
+    root.style.setProperty('--font-family', FONT_MAP[shop.font_choice || 'modern'] || FONT_MAP.modern);
+
+    // Cleanup: reset when component unmounts
+    return () => {
+      root.style.removeProperty('--color-primary');
+      root.style.removeProperty('--color-primary-hover');
+      root.style.removeProperty('--color-secondary');
+      root.style.removeProperty('--color-background');
+      root.style.removeProperty('--color-surface');
+      root.style.removeProperty('--color-accent');
+      root.style.removeProperty('--theme-button-bg');
+      root.style.removeProperty('--theme-button-bg-hover');
+      root.style.removeProperty('--font-family');
+    };
+  }, [shop]);
+
   // 2. Handlers
   const handleTabChange = (tab: Tab) => {
     // Jika belum login dan mencoba akses Profil / History
@@ -266,7 +310,22 @@ export default function DashboardPage() {
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Poppins:wght@400;600;700;800&family=Playfair+Display:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap');
-        body { font-family: ${fontFam}; background: ${bg}; }
+        :root {
+          --color-primary: ${primary};
+          --color-primary-hover: ${primHov};
+          --color-secondary: ${secondary};
+          --color-background: ${bg};
+          --color-surface: ${surface};
+          --color-accent: ${accent};
+        }
+        body {
+          font-family: ${fontFam};
+          background: ${bg};
+          color: ${accent};
+        }
+        .btn-primary, [class*='bg-primary'] { background: ${useGrad ? `linear-gradient(to right, ${primary}, ${secondary})` : primary} !important; }
+        .text-primary { color: ${primary} !important; }
+        .border-primary { border-color: ${primary} !important; }
       `}</style>
 
       <main className="min-h-screen pb-32 text-white" style={{ background: heroBg, color: accent }}>
