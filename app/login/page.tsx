@@ -62,13 +62,21 @@ function LoginContent() {
 
       localStorage.setItem("user", JSON.stringify(data.user));
 
-      // Login pelanggan SELALU ke /dashboard, tidak peduli role apapun.
+      // Validasi redirect param — JANGAN ikuti redirect ke jalur admin dari halaman pelanggan.
+      // Ini bisa terjadi jika proxy.ts pernah set ?redirect=/admin sebelumnya.
+      const safeRedirect = (redirectParams && !redirectParams.startsWith('/admin') && !redirectParams.startsWith('/superadmin'))
+        ? redirectParams
+        : null;
+
+      // Login pelanggan SELALU ke /dashboard (atau safeRedirect yang valid).
       // Owner yang ingin ke admin panel WAJIB pakai /admin/login.
       if (data.requireProfileCompletion) {
-        const redirectUrl = redirectParams ? `/profile/complete?redirect=${encodeURIComponent(redirectParams)}` : "/profile/complete";
+        const redirectUrl = safeRedirect
+          ? `/profile/complete?redirect=${encodeURIComponent(safeRedirect)}`
+          : "/profile/complete";
         router.push(redirectUrl);
       } else {
-        router.push(redirectParams || "/dashboard");
+        router.push(safeRedirect || "/dashboard");
       }
     } catch (err: any) {
       setError(err.message || "Kode OTP tidak valid atau sudah kadaluarsa.");
