@@ -18,15 +18,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // ── Lapisan Keamanan: Periksa role setelah render ──────────
   useEffect(() => {
-    // Baca token dari cookie (fallback jika middleware dilewati)
-    const getCookie = (name: string) => {
-      const value = `; ${document.cookie}`;
-      const parts = value.split(`; ${name}=`);
-      if (parts.length === 2) return parts.pop()?.split(';').shift();
-      return undefined;
-    };
-
-    const token = getCookie('token');
+    // Baca token dari localStorage (disimpan saat login di AdminLoginContent.tsx)
+    const token = localStorage.getItem('token');
     if (!token) {
       router.replace('/admin/login');
       return;
@@ -36,6 +29,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       // Decode JWT payload (tidak perlu verifikasi signature di klien)
       const payloadBase64 = token.split('.')[1];
       const payload = JSON.parse(atob(payloadBase64));
+
+      // Cek apakah token sudah expired
+      if (payload.exp && payload.exp * 1000 < Date.now()) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        router.replace('/admin/login?error=session_expired');
+        return;
+      }
 
       if (!ADMIN_ROLES.includes(payload.role)) {
         router.replace('/admin/login?error=access_denied');

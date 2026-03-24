@@ -120,11 +120,7 @@ export default function AdminSettingsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Gagal menyimpan pengaturan");
       
-      showToast("Tampilan berhasil diterbitkan!", "success");
-      
-      setTimeout(() => {
-          window.location.reload();
-      }, 1500);
+      showToast("✅ Tampilan berhasil diterbitkan! Tamu akan melihat perubahan segera.", "success");
     } catch (err: any) {
       showToast(err.message, "error");
     } finally {

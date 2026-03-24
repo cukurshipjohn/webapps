@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getTenantFromRequest } from '@/lib/tenant-context';
+import { getUserFromToken } from '@/lib/auth';
 
 // Public endpoint — no auth required, readable by anyone visiting the tenant subdomain
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,16 @@ function formatTime(raw: string | null): string | null {
 
 export async function GET(request: NextRequest) {
     try {
-        const { tenantId } = getTenantFromRequest(request);
+        // Priority 1: x-tenant-id header injected by middleware (subdomain routing)
+        let { tenantId } = getTenantFromRequest(request);
+
+        // Priority 2: Read from JWT token (works for localhost:3000/dashboard)
+        if (!tenantId) {
+            const user = getUserFromToken(request);
+            if (user?.tenant_id) {
+                tenantId = user.tenant_id;
+            }
+        }
 
         if (!tenantId) {
             return NextResponse.json({ message: 'Tenant tidak ditemukan.' }, { status: 404 });
