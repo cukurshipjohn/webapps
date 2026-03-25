@@ -1,8 +1,6 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PLANS, type PlanId } from "@/lib/billing-plans";
 import PlanToggle from "@/components/PlanToggle";
@@ -65,7 +63,7 @@ interface BillingData {
     }>;
 }
 
-export default function BillingPage() {
+function BillingPageInner() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
@@ -423,5 +421,25 @@ export default function BillingPage() {
                 </div>
             )}
         </div>
+    );
+}
+
+// Next.js 16: useSearchParams() MUST be inside <Suspense> during SSR/build.
+// Wrap the real component here so the page file never prerender-fails.
+export default function BillingPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex items-center justify-center min-h-64 text-neutral-400">
+                <div className="flex flex-col items-center gap-3">
+                    <svg className="h-8 w-8 animate-spin text-amber-500" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                    <p className="text-sm">Memuat informasi billing...</p>
+                </div>
+            </div>
+        }>
+            <BillingPageInner />
+        </Suspense>
     );
 }
