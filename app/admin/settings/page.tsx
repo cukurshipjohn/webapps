@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import WhatsAppSettingsTab from "./WhatsAppSettingsTab";
+import SubdomainSettingsTab from "./SubdomainSettingsTab";
 
 // Tipe Data untuk Settings
 interface TenantSettings {
@@ -25,7 +26,7 @@ interface TenantSettings {
   is_home_service_enabled: boolean;
 }
 
-type TabType = 'identity' | 'appearance' | 'operational' | 'whatsapp' | 'preview';
+type TabType = 'identity' | 'appearance' | 'operational' | 'whatsapp' | 'subdomain' | 'preview';
 
 export default function AdminSettingsPage() {
   const router = useRouter();
@@ -223,6 +224,9 @@ export default function AdminSettingsPage() {
                     </button>
                     <button onClick={() => setActiveTab('whatsapp')} className={`flex-1 min-w-[120px] px-4 py-2.5 text-sm font-bold rounded-xl transition-all ${activeTab === 'whatsapp' ? 'bg-[var(--color-surface)] text-green-500 shadow-sm' : 'text-neutral-400 hover:text-white hover:bg-white/5'}`}>
                         💬 WhatsApp
+                    </button>
+                    <button onClick={() => setActiveTab('subdomain')} className={`flex-1 min-w-[120px] px-4 py-2.5 text-sm font-bold rounded-xl transition-all ${activeTab === 'subdomain' ? 'bg-[var(--color-surface)] text-amber-400 shadow-sm' : 'text-neutral-400 hover:text-white hover:bg-white/5'}`}>
+                        🌐 Subdomain
                     </button>
                     <button onClick={() => setActiveTab('preview')} className={`flex-1 min-w-[120px] px-4 py-2.5 text-sm font-bold rounded-xl transition-all ${activeTab === 'preview' ? 'bg-[var(--color-surface)] text-[var(--color-primary)] shadow-sm' : 'text-neutral-400 hover:text-white hover:bg-white/5'} lg:hidden`}>
                         📱 Pratinjau
@@ -422,6 +426,11 @@ export default function AdminSettingsPage() {
                     {/* TAB 4: WHATSAPP */}
                     {activeTab === 'whatsapp' && (
                         <WhatsAppSettingsTab />
+                    )}
+
+                    {/* TAB 5: SUBDOMAIN */}
+                    {activeTab === 'subdomain' && (
+                        <SubdomainSettingsTab />
                     )}
                 </div>
             </div>
