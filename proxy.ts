@@ -35,17 +35,19 @@ function extractTenantSlug(request: NextRequest): string | null {
 }
 
 /**
- * Query Supabase via REST API (tidak bisa pakai Node modules di Edge Runtime)
+ * Query Supabase via REST API (tidak bisa pakai Node modules di Edge Runtime).
+ * Lookup menggunakan effective_slug (bukan slug) agar custom subdomain bekerja.
+ * effective_slug = custom_slug jika sudah diatur, = slug jika belum.
  */
 async function getTenantBySlug(slug: string) {
     const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/tenants?slug=eq.${encodeURIComponent(slug)}&select=id,slug,shop_name,is_active,plan_expires_at&limit=1`,
+        `${SUPABASE_URL}/rest/v1/tenants?effective_slug=eq.${encodeURIComponent(slug)}&select=id,slug,effective_slug,custom_slug,shop_name,is_active,plan_expires_at&limit=1`,
         {
             headers: {
                 'apikey': SUPABASE_ANON_KEY,
                 'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
             },
-            // Edge Runtime fetch, cache selama 30 detik untuk mengurangi load DB
+            // Edge Runtime fetch, no-store agar selalu fresh
             cache: 'no-store',
         }
     );
