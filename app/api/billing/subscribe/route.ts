@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getUserFromToken } from '@/lib/auth';
-import { getPlan } from '@/lib/billing-plans';
+import { PLANS, getPlanById, isAnnualPlan } from '@/lib/billing-plans';
 // @ts-ignore – midtrans-client tidak punya type definitions resmi
 import Midtrans from 'midtrans-client';
 
@@ -13,23 +13,32 @@ const snap = new Midtrans.Snap({
 
 export async function POST(request: NextRequest) {
     try {
+        // ─── 1. Auth ────────────────────────────────────────────────────────────
         const user = getUserFromToken(request);
         if (!user) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
         if (!user.tenant_id) return NextResponse.json({ message: 'Tenant tidak ditemukan.' }, { status: 403 });
 
-        const body = await request.json();
-        const planKey = body.plan as string;
-        const plan = getPlan(planKey);
+        const tenantId = user.tenant_id;
 
-        if (!plan) {
-            return NextResponse.json({ message: 'Plan tidak valid. Pilih starter, pro, atau business.' }, { status: 400 });
+        // ─── 2. Validasi Plan ────────────────────────────────────────────────────
+        const body = await request.json();
+        const plan_id = body.plan as string;
+
+        const validPlans = Object.keys(PLANS);
+        if (!validPlans.includes(plan_id)) {
+            return NextResponse.json({
+                message: `Plan tidak valid. Pilih salah satu: ${validPlans.join(', ')}.`
+            }, { status: 400 });
         }
 
-        // Ambil info tenant & owner
+        const plan = getPlanById(plan_id)!;
+        const annual = isAnnualPlan(plan_id);
+
+        // ─── 3. Ambil info tenant & owner ───────────────────────────────────────
         const { data: tenant, error: tenantError } = await supabaseAdmin
             .from('tenants')
             .select('id, slug, shop_name, owner_user_id')
-            .eq('id', user.tenant_id)
+            .eq('id', tenantId)
             .single();
 
         if (tenantError || !tenant) {
@@ -42,41 +51,68 @@ export async function POST(request: NextRequest) {
             .eq('id', tenant.owner_user_id)
             .single();
 
-        // Generate unique order ID
-        const tenantShort = user.tenant_id.replace(/-/g, '').substring(0, 8).toUpperCase();
+        // ─── 4. Generate Midtrans order ─────────────────────────────────────────
+        const tenantShort = tenantId.replace(/-/g, '').substring(0, 8).toUpperCase();
         const orderId = `BARBER-${tenantShort}-${Date.now()}`;
 
-        // Buat Midtrans Snap transaction
+        // Item details berbeda untuk bulanan vs tahunan
+        let item_details: Array<{ id: string; name: string; price: number; quantity: number }>;
+
+        if (!annual) {
+            // Paket bulanan — satu line item sederhana
+            item_details = [{
+                id: plan_id,
+                name: `Langganan ${plan.name} - 1 Bulan`,
+                price: plan.price,
+                quantity: 1,
+            }];
+        } else {
+            // Paket tahunan — tampilkan harga asli + baris diskon
+            // Sehingga Midtrans invoice terlihat transparan
+            const originalPrice = plan.original_annual_price!;
+            const discountAmount = originalPrice - plan.price;
+
+            item_details = [
+                {
+                    id: plan_id,
+                    name: `Langganan ${plan.name} - 1 Tahun`,
+                    price: originalPrice,
+                    quantity: 1,
+                },
+                {
+                    id: `disc_${plan_id}`,
+                    name: `Diskon ${plan.discount_percent}% Paket Tahunan`,
+                    price: -discountAmount,   // nilai negatif = diskon di Midtrans
+                    quantity: 1,
+                },
+            ];
+        }
+
         const midtransParam = {
             transaction_details: {
                 order_id: orderId,
-                gross_amount: plan.price,
+                gross_amount: plan.price,  // total setelah diskon
             },
-            item_details: [
-                {
-                    id: planKey,
-                    price: plan.price,
-                    quantity: 1,
-                    name: `Langganan ${plan.name} - CukurShip`,
-                },
-            ],
+            item_details,
             customer_details: {
                 first_name: owner?.name || 'Owner',
                 phone: owner?.phone_number || '',
             },
-            // Midtrans akan mengirimkan notifikasi ke endpoint webhook kita
         };
 
         const snapResponse = await snap.createTransaction(midtransParam);
 
-        // Simpan transaksi dengan status 'pending'
+        // ─── 5. Simpan transaksi pending ────────────────────────────────────────
         const { error: insertError } = await supabaseAdmin
             .from('subscription_transactions')
             .insert({
-                tenant_id: user.tenant_id,
+                tenant_id: tenantId,
                 midtrans_order_id: orderId,
-                plan: planKey,
+                plan: plan_id,
                 amount: plan.price,
+                billing_cycle: plan.billing_cycle,
+                discount_percent: plan.discount_percent,
+                original_amount: plan.original_annual_price ?? plan.price,
                 status: 'pending',
             });
 
@@ -86,6 +122,12 @@ export async function POST(request: NextRequest) {
             snap_token: snapResponse.token,
             order_id: orderId,
             client_key: process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY,
+            // Info tambahan untuk frontend (tampilkan ringkasan sebelum bayar)
+            plan_name: plan.name,
+            amount: plan.price,
+            billing_cycle: plan.billing_cycle,
+            discount_percent: plan.discount_percent,
+            savings: annual ? (plan.original_annual_price! - plan.price) : 0,
         });
 
     } catch (error: any) {

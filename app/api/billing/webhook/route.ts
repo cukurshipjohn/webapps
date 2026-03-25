@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { getPlan } from '@/lib/billing-plans';
+import { getPlanById, getPlanDurationDays, isAnnualPlan } from '@/lib/billing-plans';
 import crypto from 'crypto';
 
 /**
  * Midtrans Webhook Handler
  * Midtrans mengirimkan HTTP POST ke endpoint ini setiap kali status transaksi berubah.
  * Wajib dapat diakses publik (no auth header) — keamanan dilakukan via signature verification.
- * 
- * Di Midtrans Dashboard → Settings → Configuration → Payment Notification URL:
- * Set ke: https://[slug].cukurship.id/api/billing/webhook
- * atau: https://[domain-utama]/api/billing/webhook
+ *
+ * Midtrans Dashboard → Settings → Configuration → Payment Notification URL:
+ * Set ke: https://[domain-utama]/api/billing/webhook
  */
 export async function POST(request: NextRequest) {
     try {
@@ -24,8 +23,8 @@ export async function POST(request: NextRequest) {
             fraud_status,
         } = body;
 
-        // ─── 1. VERIFIKASI SIGNATURE ────────────────────────────────
-        // Signature: SHA512(order_id + status_code + gross_amount + server_key)
+        // ─── 1. Verifikasi Signature Midtrans ────────────────────────────────────
+        // SHA512(order_id + status_code + gross_amount + server_key)
         const serverKey = process.env.MIDTRANS_SERVER_KEY || '';
         const expectedSignature = crypto
             .createHash('sha512')
@@ -37,7 +36,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ message: 'Invalid signature' }, { status: 403 });
         }
 
-        // ─── 2. CARI TRANSAKSI ────────────────────────────────────────
+        // ─── 2. Cari Transaksi ───────────────────────────────────────────────────
         const { data: transaction, error: txError } = await supabaseAdmin
             .from('subscription_transactions')
             .select('*, tenants(id, slug, shop_name, owner_user_id)')
@@ -50,11 +49,13 @@ export async function POST(request: NextRequest) {
         }
 
         const tenantId = transaction.tenant_id;
-        const planKey = transaction.plan;
-        const plan = getPlan(planKey);
+        const planId   = transaction.plan;
+        const plan     = getPlanById(planId);
+        const annual   = isAnnualPlan(planId);
 
-        // ─── 3. PROSES STATUS ────────────────────────────────────────
-        const isSuccess = (transaction_status === 'settlement') ||
+        // ─── 3. Proses Status Midtrans ───────────────────────────────────────────
+        const isSuccess =
+            transaction_status === 'settlement' ||
             (transaction_status === 'capture' && fraud_status === 'accept');
 
         const isExpiredOrCancel = ['expire', 'cancel', 'deny'].includes(transaction_status);
@@ -62,11 +63,17 @@ export async function POST(request: NextRequest) {
 
         if (isSuccess && plan) {
             const now = new Date();
-            const periodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // +30 hari
 
-            console.log(`[Billing Webhook] ✅ Payment success for order ${order_id}, plan=${planKey}, tenant=${tenantId}`);
+            // Hitung masa aktif dari lib/billing-plans.ts (30 hari / 365 hari)
+            const durationDays = getPlanDurationDays(planId);
+            const periodEnd    = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
 
-            // Update transaksi
+            console.log(
+                `[Billing Webhook] ✅ Payment success | order=${order_id} | plan=${planId} | ` +
+                `billing=${plan.billing_cycle} | tenant=${tenantId} | expires=${periodEnd.toISOString()}`
+            );
+
+            // ── 3a. Update subscription_transactions ──────────────────────────────
             const { error: txUpdateError } = await supabaseAdmin
                 .from('subscription_transactions')
                 .update({
@@ -82,35 +89,31 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ message: 'Failed to update transaction' }, { status: 500 });
             }
 
-            // Update tenant plan — gunakan only columns yang pasti ada
+            // ── 3b. Update tenants — WAJIB .eq('id', tenantId) ───────────────────
             const tenantUpdate: Record<string, any> = {
-                plan: planKey,
+                plan: planId,
+                billing_cycle: plan.billing_cycle,
                 plan_expires_at: periodEnd.toISOString(),
                 is_active: true,
+                // Isi jatah revisi custom subdomain dari billing-plans.ts
+                // Paket bulanan → 0, paket tahunan → sesuai plan
+                subdomain_revisions_remaining: plan.subdomain_revisions,
             };
 
-            // max_barbers dan max_bookings_per_month sudah ada dari migration_08
-            // Hindari meng-update 9999 karena beberapa plan pakai nilai batas yang sangat besar
-            if (plan.max_barbers !== 9999) {
-                tenantUpdate.max_barbers = plan.max_barbers;
-            } else {
-                tenantUpdate.max_barbers = 999; // praktis "unlimited" tanpa overflow
-            }
-
-            if (plan.max_bookings_per_month !== 9999) {
-                tenantUpdate.max_bookings_per_month = plan.max_bookings_per_month;
-            } else {
-                tenantUpdate.max_bookings_per_month = 99999;
-            }
+            // Set max_barbers & max_bookings_per_month (999 = "unlimited" praktis)
+            tenantUpdate.max_barbers = plan.max_barbers >= 999999 ? 999 : plan.max_barbers;
+            tenantUpdate.max_bookings_per_month = plan.max_bookings_per_month >= 999999
+                ? 99999
+                : plan.max_bookings_per_month;
 
             const { error: tenantUpdateError } = await supabaseAdmin
                 .from('tenants')
                 .update(tenantUpdate)
-                .eq('id', tenantId);
+                .eq('id', tenantId);   // ← WAJIB
 
             if (tenantUpdateError) {
                 console.error('[Billing Webhook] ❌ Failed to update tenant:', tenantUpdateError);
-                // Kembalikan transaksi ke status awal agar bisa dicoba ulang
+                // Rollback transaksi agar bisa dicoba ulang oleh Midtrans
                 await supabaseAdmin
                     .from('subscription_transactions')
                     .update({ status: 'pending' })
@@ -118,10 +121,45 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ message: 'Failed to update tenant plan' }, { status: 500 });
             }
 
-            console.log(`[Billing Webhook] ✅ Tenant ${tenantId} updated to plan=${planKey}, expires=${periodEnd.toISOString()}`);
+            console.log(`[Billing Webhook] ✅ Tenant ${tenantId} → plan=${planId}, expires=${periodEnd.toISOString()}`);
 
-            // Kirim WA konfirmasi ke owner (non-blocking – error tidak gagalkan response)
-            sendWhatsApp(transaction, `✅ *Pembayaran Berhasil!*\n\nHalo! Langganan *${plan.name}* untuk toko *${transaction.tenants?.shop_name}* sudah aktif.\n\n📅 Aktif hingga: *${periodEnd.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}*\n\nTerima kasih sudah memilih CukurShip! ✂️`);
+            // ── 3c. Kirim WA konfirmasi ke owner (non-blocking) ────────────────────
+            const shopName      = transaction.tenants?.shop_name || 'Toko Anda';
+            const periodEndStr  = periodEnd.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+            const amountFormatted = `Rp ${plan.price.toLocaleString('id-ID')}`;
+
+            let waMessage: string;
+
+            if (!annual) {
+                // Pesan untuk paket BULANAN
+                waMessage =
+                    `✅ *Pembayaran Berhasil!*\n\n` +
+                    `Paket: *${plan.name}*\n` +
+                    `Aktif hingga: *${periodEndStr}*\n` +
+                    `Total: *${amountFormatted}*\n\n` +
+                    `Terima kasih! 🙏`;
+            } else {
+                // Pesan untuk paket TAHUNAN — tampilkan penghematan
+                const savedAmount   = (plan.original_annual_price! - plan.price).toLocaleString('id-ID');
+                const subdomainNote = plan.custom_subdomain
+                    ? `\n\n💡 *Custom Subdomain Aktif!*\nKamu bisa mengatur subdomain toko di:\nPanel Admin → Pengaturan → Subdomain`
+                    : '';
+
+                waMessage =
+                    `✅ *Pembayaran Berhasil!*\n\n` +
+                    `🎉 Selamat berlangganan paket tahunan!\n\n` +
+                    `Paket: *${plan.name}*\n` +
+                    `Diskon: *${plan.discount_percent}%*\n` +
+                    `Total dibayar: *${amountFormatted}*\n` +
+                    `Hemat: *Rp ${savedAmount}*\n` +
+                    `Aktif hingga: *${periodEndStr}*` +
+                    subdomainNote;
+            }
+
+            // Non-blocking — error tidak gagalkan response ke Midtrans
+            sendWhatsApp(transaction, waMessage).catch((err) =>
+                console.error('[Billing Webhook] WA send error:', err)
+            );
 
         } else if (isExpiredOrCancel || isFailed) {
             const newStatus = isExpiredOrCancel ? 'expired' : 'failed';
@@ -132,15 +170,22 @@ export async function POST(request: NextRequest) {
                 .eq('id', transaction.id);
 
             if (isExpiredOrCancel) {
-                sendWhatsApp(transaction, `⚠️ *Pembayaran Kedaluwarsa*\n\nPembayaran perpanjangan langganan *${transaction.tenants?.shop_name}* telah kedaluwarsa.\n\nSilakan lakukan pembayaran kembali dari Panel Admin untuk menjaga toko Anda tetap aktif.`);
+                const shopName = transaction.tenants?.shop_name || 'Toko Anda';
+                sendWhatsApp(
+                    transaction,
+                    `⚠️ *Pembayaran Kedaluwarsa*\n\n` +
+                    `Pembayaran perpanjangan langganan *${shopName}* telah kedaluwarsa.\n\n` +
+                    `Silakan lakukan pembayaran kembali dari Panel Admin untuk menjaga toko Anda tetap aktif.`
+                ).catch(() => {});
             }
 
-            console.log(`[Billing Webhook] ⚠️ Transaction ${order_id} marked as ${newStatus}`);
+            console.log(`[Billing Webhook] ⚠️ Order ${order_id} → ${newStatus}`);
         } else {
-            // Status lain (pending, authorize, dll) — tidak lakukan apa-apa, tunggu notif berikutnya
+            // Status pending/authorize/dll — tunggu notifikasi berikutnya dari Midtrans
             console.log(`[Billing Webhook] ℹ️ Ignoring status=${transaction_status} for order=${order_id}`);
         }
 
+        // Selalu return 200 OK ke Midtrans agar tidak di-retry terus
         return NextResponse.json({ status: 'ok' });
 
     } catch (error: any) {
@@ -149,29 +194,30 @@ export async function POST(request: NextRequest) {
     }
 }
 
-async function sendWhatsApp(transaction: any, message: string) {
-    try {
-        if (!transaction.tenants?.owner_user_id) return;
+// ─── Helper: Kirim pesan WhatsApp ke owner tenant ────────────────────────────
+async function sendWhatsApp(transaction: any, message: string): Promise<void> {
+    if (!transaction.tenants?.owner_user_id) return;
 
-        const { data: owner } = await supabaseAdmin
-            .from('users')
-            .select('phone_number')
-            .eq('id', transaction.tenants.owner_user_id)
-            .single();
+    const { data: owner } = await supabaseAdmin
+        .from('users')
+        .select('phone_number')
+        .eq('id', transaction.tenants.owner_user_id)
+        .single();
 
-        if (!owner?.phone_number) return;
+    if (!owner?.phone_number) return;
 
-        let waUrl = process.env.WHATSAPP_SERVICE_URL;
-        const waSecret = process.env.WHATSAPP_SERVICE_SECRET;
-        if (!waUrl || !waSecret) return;
-        if (!waUrl.startsWith('http')) waUrl = `https://${waUrl}`;
+    const waUrl    = process.env.WHATSAPP_SERVICE_URL;
+    const waSecret = process.env.WHATSAPP_SERVICE_SECRET;
+    if (!waUrl || !waSecret) return;
 
-        await fetch(`${waUrl}/send-message`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-internal-secret': waSecret },
-            body: JSON.stringify({ phoneNumber: owner.phone_number, message }),
-        });
-    } catch (err) {
-        console.error('[Billing Webhook] WA send error:', err);
-    }
+    const baseUrl = waUrl.startsWith('http') ? waUrl : `https://${waUrl}`;
+
+    await fetch(`${baseUrl}/send-message`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${waSecret}`,  // ← WHATSAPP_SERVICE_SECRET, bukan x-internal-secret
+        },
+        body: JSON.stringify({ phoneNumber: owner.phone_number, message }),
+    });
 }
