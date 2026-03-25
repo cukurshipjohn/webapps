@@ -7,7 +7,7 @@ import PostFeed from "@/components/PostFeed";
 // Plan data mirrored from lib/billing-plans.ts (untuk client component tanpa import langsung)
 const PLANS = [
     {
-        key: "starter", name: "Starter", price: 99000, max_barbers: 2, max_bookings: 50,
+        key: "starter", name: "Starter", price: 99000, price_annual: 990000, max_barbers: 2, max_bookings: 50,
         features: [
             "Maks. 2 kapster",
             "Maks. 50 booking/bulan",
@@ -19,7 +19,7 @@ const PLANS = [
         popular: false,
     },
     {
-        key: "pro", name: "Pro", price: 199000, max_barbers: 5, max_bookings: 9999,
+        key: "pro", name: "Pro", price: 199000, price_annual: 1890000, max_barbers: 5, max_bookings: 9999,
         features: [
             "Maks. 5 kapster",
             "Booking tidak terbatas",
@@ -33,7 +33,7 @@ const PLANS = [
         popular: true,
     },
     {
-        key: "business", name: "Business", price: 349000, max_barbers: 9999, max_bookings: 9999,
+        key: "business", name: "Business", price: 349000, price_annual: 3140000, max_barbers: 9999, max_bookings: 9999,
         features: [
             "Kapster tidak terbatas",
             "Booking tidak terbatas",
@@ -65,6 +65,7 @@ function formatRupiah(n: number) {
 
 export default function LandingPage() {
     const [scrolled, setScrolled] = useState(false);
+    const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
 
     useEffect(() => {
         const onScroll = () => setScrolled(window.scrollY > 20);
@@ -202,14 +203,42 @@ export default function LandingPage() {
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[300px] bg-amber-500/4 rounded-full blur-[100px]" />
                 </div>
                 <div className="relative max-w-5xl mx-auto">
-                    <div className="text-center mb-14">
+                    <div className="text-center mb-10">
                         <p className="text-amber-400 text-sm font-bold uppercase tracking-widest mb-3">Harga Transparan</p>
                         <h2 className="text-4xl font-extrabold text-white">Pilih Paket yang Sesuai</h2>
-                        <p className="text-neutral-400 mt-3">Mulai gratis 14 hari, tidak perlu kartu kredit.</p>
+                        <p className="text-neutral-400 mt-3 mb-8">Mulai gratis 14 hari, tidak perlu kartu kredit.</p>
+
+                        {/* Toggle Bulanan / Tahunan */}
+                        <div className="inline-flex items-center gap-2 p-1 bg-neutral-900 border border-neutral-800 rounded-full mx-auto">
+                            <button
+                                onClick={() => setBillingCycle("monthly")}
+                                className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${
+                                    billingCycle === "monthly" ? "bg-amber-500 text-black shadow-lg" : "text-neutral-400 hover:text-white"
+                                }`}
+                            >
+                                Bulanan
+                            </button>
+                            <button
+                                onClick={() => setBillingCycle("annual")}
+                                className={`px-6 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 ${
+                                    billingCycle === "annual" ? "bg-amber-500 text-black shadow-lg" : "text-neutral-400 hover:text-white"
+                                }`}
+                            >
+                                Tahunan
+                                <span className={`px-2 py-0.5 text-[10px] rounded-full uppercase tracking-wider ${
+                                    billingCycle === "annual" ? "bg-black/20 text-black" : "bg-amber-500/20 text-amber-400"
+                                }`}>Hemat s.d 25%</span>
+                            </button>
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {PLANS.map((plan) => (
+                        {PLANS.map((plan) => {
+                            const isAnnual = billingCycle === "annual";
+                            const displayPrice = isAnnual ? Math.round(plan.price_annual / 12) : plan.price;
+                            const savedAmount = isAnnual ? (plan.price * 12) - plan.price_annual : 0;
+
+                            return (
                             <div key={plan.key}
                                 className={`relative rounded-2xl p-6 flex flex-col gap-5 border-2 transition-all
                                     ${plan.popular
@@ -223,12 +252,31 @@ export default function LandingPage() {
                                 )}
                                 <div>
                                     <h3 className="text-lg font-bold text-white">{plan.name}</h3>
-                                    <p className="text-3xl font-extrabold text-white mt-2">
-                                        {formatRupiah(plan.price)}
-                                        <span className="text-sm font-normal text-neutral-400">/bulan</span>
-                                    </p>
+                                    
+                                    <div className="mt-2 min-h-16 flex flex-col justify-end">
+                                        {isAnnual && (
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-sm font-medium text-neutral-500 line-through">
+                                                    {formatRupiah(plan.price)}
+                                                </span>
+                                                <span className="text-[10px] font-bold px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full border border-green-500/30">
+                                                    Hemat {formatRupiah(savedAmount)}/th
+                                                </span>
+                                            </div>
+                                        )}
+                                        <p className="text-3xl font-extrabold text-white flex items-end">
+                                            {formatRupiah(displayPrice)}
+                                            <span className="text-sm font-normal text-neutral-400 pb-1 ml-1">/bln</span>
+                                        </p>
+                                    </div>
+                                    
+                                    {isAnnual && (
+                                        <p className="text-xs text-neutral-500 mt-2 font-medium">
+                                            Ditagih {formatRupiah(plan.price_annual)} per tahun
+                                        </p>
+                                    )}
                                 </div>
-                                <ul className="space-y-2.5 flex-1">
+                                <ul className="space-y-2.5 flex-1 mt-2">
                                     {plan.features.map((f, i) => (
                                         <li key={i} className="flex items-start gap-2 text-sm text-neutral-300">
                                             <span className="text-amber-500 flex-shrink-0 mt-0.5">✓</span>
@@ -245,7 +293,8 @@ export default function LandingPage() {
                                     Mulai Gratis 14 Hari
                                 </Link>
                             </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             </section>
