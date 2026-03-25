@@ -153,7 +153,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
 
-        <div className="p-4 border-t border-neutral-800/50">
+        <div className="p-4 border-t border-neutral-800/50 space-y-2">
+          <a 
+            href="https://wa.me/6287836993805"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-amber-500 font-medium text-sm hover:bg-amber-500/10 hover:border-amber-500/20 border border-transparent transition-all"
+          >
+            <span>💬</span> Lapor Bug / Support
+          </a>
           <button 
             onClick={handleLogout}
             className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-neutral-400 font-medium text-sm hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20 border border-transparent transition-all"
@@ -202,9 +210,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 );
               })}
             </nav>
+            <a 
+              href="https://wa.me/6287836993805"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-6 w-full py-4 rounded-xl text-amber-500 text-center font-medium border border-amber-500/20 bg-amber-500/10"
+            >
+              Lapor Bug / Support
+            </a>
             <button 
               onClick={handleLogout}
-              className="mt-6 w-full py-4 rounded-xl text-red-500 font-medium border border-red-500/20 bg-red-500/10"
+              className="mt-2 w-full py-4 rounded-xl text-red-500 font-medium border border-red-500/20 bg-red-500/10"
             >
               Keluar
             </button>
