@@ -183,6 +183,9 @@ export default function DashboardPage() {
     root.style.setProperty('--theme-button-bg-hover', btnBgHover);
     root.style.setProperty('--font-family', FONT_MAP[shop.font_choice || 'modern'] || FONT_MAP.modern);
 
+    // Set page title to tenant shop name
+    document.title = shop.shop_name || 'Barbershop';
+
     // Cleanup: reset when component unmounts
     return () => {
       root.style.removeProperty('--color-primary');

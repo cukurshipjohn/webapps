@@ -2,29 +2,37 @@ import type { Metadata } from "next";
 import { Outfit, Merriweather, Montserrat } from "next/font/google";
 import "./globals.css";
 import { supabaseAdmin } from "@/lib/supabase";
+import { headers } from 'next/headers';
 
-const outfit = Outfit({
-  subsets: ["latin"],
-  variable: "--font-outfit",
-});
+const ROOT_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || 'cukurship.id';
 
-const merriweather = Merriweather({
-  weight: ["300", "400", "700", "900"],
-  subsets: ["latin"],
-  variable: "--font-classic",
-});
+export async function generateMetadata(): Promise<Metadata> {
+  try {
+    const headersList = await headers();
+    const host = headersList.get('host') || '';
 
-const fontBold = Montserrat({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-bold",
-  display: "swap",
-});
+    // Extract subdomain slug
+    let slug: string | null = null;
+    if (!host.includes('localhost') && !host.includes('127.0.0.1') && host.endsWith(`.${ROOT_DOMAIN}`)) {
+      slug = host.replace(`.${ROOT_DOMAIN}`, '');
+    }
 
-export const metadata: Metadata = {
-  title: "John CukurShip",
-  description: "Book your next premium haircut easily.",
-};
+    if (slug) {
+      // Fetch tenant shop_name by slug
+      const { data: tenant } = await supabaseAdmin
+        .from('tenants')
+        .select('shop_name')
+        .eq('slug', slug)
+        .single();
+      if (tenant?.shop_name) {
+        return { title: tenant.shop_name, description: `Booking online di ${tenant.shop_name}.` };
+      }
+    }
+  } catch { /* silent */ }
+
+  // Default: root domain or localhost
+  return { title: 'CukurShip', description: 'Platform booking barbershop multi-tenant.' };
+}
 
 // Fungsi Helper untuk fetch CSS Settings
 async function getTenantSettings() {

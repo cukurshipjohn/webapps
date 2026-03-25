@@ -56,6 +56,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       .catch(() => {});
   }, []);
 
+  // Set page title dynamically from tenant shop name
+  useEffect(() => {
+    if (shopName && shopName !== '...') {
+      document.title = `${shopName} – Admin Panel`;
+    }
+  }, [shopName]);
+
   const shopUrl = shopSlug ? `https://${shopSlug}.${appDomain}` : null;
 
   const handleCopy = () => {

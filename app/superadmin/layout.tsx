@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const navLinks = [
     { name: "Overview", href: "/superadmin", icon: "📡", exact: true },
@@ -13,6 +13,10 @@ export default function SuperadminLayout({ children }: { children: React.ReactNo
     const pathname = usePathname();
     const router = useRouter();
     const [mobileOpen, setMobileOpen] = useState(false);
+
+    useEffect(() => {
+        document.title = 'CukurShip | Super Admin';
+    }, []);
 
     const handleLogout = () => {
         localStorage.removeItem("superadmin_token");
