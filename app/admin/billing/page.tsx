@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PLANS, type PlanId } from "@/lib/billing-plans";
@@ -76,7 +78,7 @@ export default function BillingPage() {
 
     // Baca cycle dari query param (misal dari halaman subdomain → ?cycle=annual)
     useEffect(() => {
-        const cycle = searchParams.get("cycle");
+        const cycle = searchParams?.get("cycle");
         if (cycle === "annual") setBillingCycle("annual");
     }, [searchParams]);
 
