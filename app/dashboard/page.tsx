@@ -596,35 +596,41 @@ export default function DashboardPage() {
         <div className="max-w-lg mx-auto flex justify-around items-center">
           
           {/* Tab: Home */}
-          <button onClick={() => handleTabChange("home")} className="flex flex-col items-center gap-1 py-1 w-16 transition-all">
-            <span className={`text-2xl transition-transform ${activeTab === "home" ? "scale-110 grayscale-0" : "grayscale saturate-0 opacity-60"}`}>🏠</span>
-            <span className="text-[9px] font-bold uppercase tracking-wider mt-0.5" style={{ color: activeTab === "home" ? primary : `${accent}60` }}>Beranda</span>
+          <button onClick={() => handleTabChange("home")} className="flex flex-col items-center gap-1 py-1 w-16 transition-all group">
+            <div className="h-8 w-8 flex items-center justify-center">
+              <span className={`text-2xl transition-transform ${activeTab === "home" ? "scale-110 grayscale-0" : "grayscale saturate-0 opacity-60 group-hover:opacity-100"}`}>🏠</span>
+            </div>
+            <span className="text-[9px] font-bold uppercase tracking-wider mt-0.5 transition-colors" style={{ color: activeTab === "home" ? primary : `${accent}60` }}>Beranda</span>
             <div className={`h-1 w-1 rounded-full bg-current transition-all ${activeTab === "home" ? "opacity-100" : "opacity-0"}`} style={{ color: primary }} />
           </button>
 
           {/* Floating Action / Tab: Booking */}
           <Link href="/book" onClick={handleBookClick} className="relative -top-5 flex flex-col items-center gap-1 transition-all active:scale-95 group">
-            <div className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg border-4"
+            <div className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg border-4 relative z-10"
               style={{ background: primary, color: "#000", borderColor: bg, boxShadow: `0 8px 20px ${primary}40` }}>
               <span className="text-2xl group-hover:scale-110 transition-transform">✂️</span>
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: primary }}>Booking</span>
+            <span className="text-[9px] font-bold uppercase tracking-wider mt-0.5" style={{ color: primary }}>Booking</span>
           </Link>
 
           {/* Tab: Riwayat */}
-          <button onClick={() => handleTabChange("history")} className="flex flex-col items-center gap-1 py-1 w-16 transition-all">
-            <span className={`text-2xl transition-transform ${activeTab === "history" ? "scale-110 grayscale-0" : "grayscale saturate-0 opacity-60"}`}>📜</span>
-            <span className="text-[9px] font-bold uppercase tracking-wider mt-0.5" style={{ color: activeTab === "history" ? primary : `${accent}60` }}>Riwayat</span>
+          <button onClick={() => handleTabChange("history")} className="flex flex-col items-center gap-1 py-1 w-16 transition-all group">
+            <div className="h-8 w-8 flex items-center justify-center">
+              <span className={`text-2xl transition-transform ${activeTab === "history" ? "scale-110 grayscale-0" : "grayscale saturate-0 opacity-60 group-hover:opacity-100"}`}>📜</span>
+            </div>
+            <span className="text-[9px] font-bold uppercase tracking-wider mt-0.5 transition-colors" style={{ color: activeTab === "history" ? primary : `${accent}60` }}>Riwayat</span>
             <div className={`h-1 w-1 rounded-full bg-current transition-all ${activeTab === "history" ? "opacity-100" : "opacity-0"}`} style={{ color: primary }} />
           </button>
 
           {/* Tab: Profil */}
-          <button onClick={() => handleTabChange("profile")} className="flex flex-col items-center gap-1 py-1 w-16 transition-all">
-            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-sm border-2 transition-transform ${activeTab === "profile" ? "scale-110" : ""}`}
-              style={{ borderColor: activeTab === "profile" ? primary : "transparent", background: user ? "transparent" : `${accent}20` }}>
-              {user?.photoUrl ? <img src={user.photoUrl} alt="P" className="w-full h-full rounded-full object-cover" /> : "👤"}
+          <button onClick={() => handleTabChange("profile")} className="flex flex-col items-center gap-1 py-1 w-16 transition-all group">
+            <div className="h-8 w-8 flex items-center justify-center">
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-sm border-2 transition-transform ${activeTab === "profile" ? "scale-110" : "opacity-70 group-hover:opacity-100"}`}
+                style={{ borderColor: activeTab === "profile" ? primary : "transparent", background: user ? "transparent" : `${accent}20` }}>
+                {user?.photoUrl ? <img src={user.photoUrl} alt="P" className="w-full h-full rounded-full object-cover" /> : "👤"}
+              </div>
             </div>
-            <span className="text-[9px] font-bold uppercase tracking-wider mt-1" style={{ color: activeTab === "profile" ? primary : `${accent}60` }}>Profil</span>
+            <span className="text-[9px] font-bold uppercase tracking-wider mt-0.5 transition-colors" style={{ color: activeTab === "profile" ? primary : `${accent}60` }}>Profil</span>
             <div className={`h-1 w-1 rounded-full bg-current transition-all ${activeTab === "profile" ? "opacity-100" : "opacity-0"}`} style={{ color: primary }} />
           </button>
 
