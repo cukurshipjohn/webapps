@@ -46,6 +46,25 @@ export default function BookAppointmentPage() {
       .catch(() => setFetchError("Tidak dapat memuat data barber."));
   }, []);
 
+  // Fetch shop details for Title & Favicon
+  useEffect(() => {
+    fetch("/api/store/info")
+      .then(res => res.json())
+      .then(data => {
+        if (data.shop_name) document.title = `Booking – ${data.shop_name}`;
+        if (data.logo_url) {
+          let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+          if (!link) {
+            link = document.createElement('link');
+            link.rel = 'icon';
+            document.head.appendChild(link);
+          }
+          link.href = data.logo_url;
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Fetch services ketika serviceType berubah
   useEffect(() => {
     setSelectedService("");

@@ -76,7 +76,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       }
       link.href = shopLogo;
     }
-  }, [shopLogo]);
+  }, [shopLogo, pathname]);
 
   const shopUrl = shopSlug ? `https://${shopSlug}.${appDomain}` : null;
 
