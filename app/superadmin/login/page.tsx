@@ -27,7 +27,15 @@ export default function SuperadminLogin() {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message);
-            setSuccessMsg("OTP dikirim. Masukkan kode dari WhatsApp.");
+
+            // OTP selalu berhasil dibuat di DB. Jika WA gagal kirim,
+            // arahkan ke OTP step dan tampilkan peringatan (bukan error),
+            // sehingga superadmin tahu harus cek log server.
+            if (data.wa_sent === false) {
+                setSuccessMsg("⚠️ OTP dibuat tapi WA tidak terkirim. Cek log server (terminal/pm2 logs) untuk kode OTP Anda, lalu masukkan di bawah.");
+            } else {
+                setSuccessMsg("OTP dikirim. Masukkan kode dari WhatsApp.");
+            }
             setStep("otp");
         } catch (err: any) {
             setError(err.message || "Gagal mengirim OTP.");
@@ -35,6 +43,7 @@ export default function SuperadminLogin() {
             setLoading(false);
         }
     };
+
 
     const handleVerifyOTP = async (e: React.FormEvent) => {
         e.preventDefault();

@@ -22,17 +22,16 @@ export async function POST(request: Request) {
                 .eq('phone_number', phoneNumber)
                 .single();
 
-            if (userError || !userData || !['owner', 'superadmin'].includes(userData.role)) {
+            if (userError || !userData || !['owner', 'superadmin', 'barber'].includes(userData.role)) {
                 return NextResponse.json({ message: 'Akses Ditolak: Nomor ini tidak terdaftar sebagai Admin/Tenant.' }, { status: 403 });
             }
         }
 
         // 1. Generate OTP 6 digit
         const otpCode = generateOTP();
-        const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 menit dari sekarang
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 menit
 
-        // 2. Hapus SEMUA OTP sebelumnya (expired maupun aktif) untuk nomor ini
-        //    agar tidak ada sesi lama yang masih bisa dipakai atau menyebabkan konflik
+        // 2. Hapus SEMUA OTP sebelumnya untuk nomor ini
         await supabaseAdmin
             .from('otp_sessions')
             .delete()
@@ -51,37 +50,74 @@ export async function POST(request: Request) {
 
         if (insertError) throw insertError;
 
+        // ── FALLBACK: Selalu cetak OTP ke log server ──────────────────────
+        // ALASAN: Jika WA service mati/belum konek (terutama saat pertama deploy
+        // atau session WA rusak), superadmin TETAP bisa login dengan melihat log:
+        //   • Development : terlihat langsung di terminal `npm run dev`
+        //   • Production  : cek via `pm2 logs`, `docker logs`, atau Vercel Logs
+        // OTP tetap time-limited (10 menit) → tidak menurunkan keamanan secara signifikan
+        // karena tetap butuh akses ke server/VPS untuk melihatnya.
+        console.log(`\n┌─────────────────────────────────────────┐`);
+        console.log(`│  🔐 OTP LOGIN — FALLBACK LOG             │`);
+        console.log(`│  Nomor  : ${phoneNumber.padEnd(30)}│`);
+        console.log(`│  Kode   : ${otpCode.padEnd(30)}│`);
+        console.log(`│  Berlaku: 10 menit dari sekarang         │`);
+        console.log(`└─────────────────────────────────────────┘\n`);
+        // ─────────────────────────────────────────────────────────────────
+
         // 4. Kirim OTP via WhatsApp microservice
+        //    Dibungkus try/catch TERPISAH agar kegagalan WA TIDAK membatalkan
+        //    keseluruhan request. OTP sudah tersimpan di DB → user tetap bisa
+        //    memasukkan kode yang tercetak di log jika WA gagal.
         let serviceUrl = process.env.WHATSAPP_SERVICE_URL;
         const serviceSecret = process.env.WHATSAPP_SERVICE_SECRET;
 
-        if (!serviceUrl || !serviceSecret) {
-            throw new Error('Konfigurasi WhatsApp service belum diatur di .env.local');
+        let waSent = false;
+        let waError = '';
+
+        if (serviceUrl && serviceSecret) {
+            if (!serviceUrl.startsWith('http')) {
+                serviceUrl = `https://${serviceUrl}`;
+            }
+
+            try {
+                // Timeout 6 detik: WA yang lambat/mati tidak blokir seluruh request
+                const waResponse = await fetch(`${serviceUrl}/send-otp`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-internal-secret': serviceSecret,
+                    },
+                    body: JSON.stringify({ phoneNumber, otpCode }),
+                    signal: AbortSignal.timeout(6000),
+                });
+
+                if (waResponse.ok) {
+                    waSent = true;
+                } else {
+                    const errBody = await waResponse.json().catch(() => ({}));
+                    waError = errBody.message || `WA service error HTTP ${waResponse.status}`;
+                    console.warn(`⚠️  OTP WA gagal (${phoneNumber}): ${waError}`);
+                }
+            } catch (fetchErr: any) {
+                waError = fetchErr.message || 'WA service tidak dapat dijangkau';
+                console.warn(`⚠️  WA service timeout/unreachable: ${waError}`);
+            }
+        } else {
+            waError = 'WHATSAPP_SERVICE_URL / SECRET belum dikonfigurasi di .env';
+            console.warn(`⚠️  ${waError}`);
         }
 
-        // Pastikan URL memiliki protokol (http:// atau https://)
-        if (!serviceUrl.startsWith('http')) {
-            serviceUrl = `https://${serviceUrl}`;
-        }
-
-        const waResponse = await fetch(`${serviceUrl}/send-otp`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-internal-secret': serviceSecret,
-            },
-            body: JSON.stringify({ phoneNumber, otpCode }),
-        });
-
-        if (!waResponse.ok) {
-            const waError = await waResponse.json();
-            throw new Error(waError.message || 'Gagal mengirim pesan WhatsApp');
-        }
-
+        // 5. Response — selalu berhasil (OTP tersimpan di DB).
+        //    Jika WA gagal, beri pesan yang mengarahkan superadmin ke log server.
         return NextResponse.json({
             success: true,
-            message: 'Kode OTP telah dikirim ke WhatsApp Anda.'
+            wa_sent: waSent,
+            message: waSent
+                ? 'Kode OTP telah dikirim ke WhatsApp Anda.'
+                : `OTP berhasil dibuat. WhatsApp gagal terkirim — cek log server untuk mendapatkan kode OTP. (${waError})`,
         });
+
     } catch (error: any) {
         console.error('Request OTP error:', error);
         return NextResponse.json({
