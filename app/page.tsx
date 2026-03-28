@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Script from "next/script";
 import { useState, useEffect } from "react";
 import PostFeed from "@/components/PostFeed";
 
@@ -73,8 +74,30 @@ export default function LandingPage() {
         return () => window.removeEventListener("scroll", onScroll);
     }, []);
 
+    const trackLead = () => {
+        if (typeof window !== "undefined" && (window as any).fbq) {
+            (window as any).fbq('track', 'Lead');
+        }
+    };
+
     return (
         <div className="min-h-screen bg-neutral-950 text-white font-sans overflow-x-hidden">
+            {/* ── META PIXEL ────────────────────────────────────────── */}
+            <Script id="meta-pixel" strategy="afterInteractive">
+                {`
+                    !function(f,b,e,v,n,t,s)
+                    {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+                    n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+                    if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+                    n.queue=[];t=b.createElement(e);t.async=!0;
+                    t.src=v;s=b.getElementsByTagName(e)[0];
+                    s.parentNode.insertBefore(t,s)}(window, document,'script',
+                    'https://connect.facebook.net/en_US/fbevents.js');
+                    fbq('init', '787956207131909');
+                    fbq('track', 'PageView');
+                `}
+            </Script>
+
             {/* ── NAVBAR ────────────────────────────────────────────── */}
             <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? "bg-neutral-950/95 border-b border-neutral-800/80 backdrop-blur-md" : "bg-transparent"}`}>
                 <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -87,11 +110,12 @@ export default function LandingPage() {
                         <a href="#pricing" className="hover:text-white transition-colors">Harga</a>
                         <Link href="/admin/login" className="hover:text-white transition-colors">Login</Link>
                         <Link href="/register"
+                            onClick={trackLead}
                             className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-sm transition-all shadow-[0_0_15px_rgba(245,158,11,0.2)]">
                             Daftar Gratis
                         </Link>
                     </nav>
-                    <Link href="/register" className="md:hidden px-4 py-2 bg-amber-500 text-black font-bold rounded-lg text-sm">
+                    <Link href="/register" onClick={trackLead} className="md:hidden px-4 py-2 bg-amber-500 text-black font-bold rounded-lg text-sm">
                         Daftar
                     </Link>
                 </div>
@@ -130,6 +154,7 @@ export default function LandingPage() {
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                         <Link href="/register"
+                            onClick={trackLead}
                             className="group w-full sm:w-auto px-8 py-4 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-2xl text-lg transition-all shadow-[0_0_40px_rgba(245,158,11,0.25)] hover:shadow-[0_0_60px_rgba(245,158,11,0.4)] hover:-translate-y-0.5">
                             Daftarkan Barbershop Kamu — Gratis 14 Hari →
                         </Link>
@@ -285,6 +310,7 @@ export default function LandingPage() {
                                     ))}
                                 </ul>
                                 <Link href="/register"
+                                    onClick={trackLead}
                                     className={`w-full py-3 rounded-xl font-bold text-sm text-center transition-all
                                         ${plan.popular
                                             ? "bg-amber-500 hover:bg-amber-400 text-black shadow-[0_0_20px_rgba(245,158,11,0.15)]"
@@ -311,6 +337,7 @@ export default function LandingPage() {
                             Lebih dari 100+ barbershop sudah menggunakan CukurShip. Bergabunglah sekarang dan dapatkan akses penuh gratis selama 14 hari.
                         </p>
                         <Link href="/register"
+                            onClick={trackLead}
                             className="inline-flex items-center gap-2 px-10 py-4 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-2xl text-lg transition-all shadow-[0_0_40px_rgba(245,158,11,0.3)] hover:-translate-y-0.5">
                             Daftarkan Barbershop Kamu — Gratis 14 Hari →
                         </Link>
@@ -335,7 +362,7 @@ export default function LandingPage() {
                                 className="hover:text-green-400 transition-colors flex items-center gap-1.5">
                                 💬 Lapor Bug / Support
                             </a>
-                            <Link href="/register" className="hover:text-amber-400 transition-colors">Daftar</Link>
+                            <Link href="/register" onClick={trackLead} className="hover:text-amber-400 transition-colors">Daftar</Link>
                             <Link href="/admin/login" className="hover:text-white transition-colors">Login Admin</Link>
                         </div>
                     </div>
