@@ -405,6 +405,31 @@ export default function DashboardPage() {
               </div>
             </section>
 
+            {/* POST FEED */}
+            <section className="max-w-lg mx-auto px-5 pb-6">
+              <div className="border-t pt-6" style={{ borderColor: `${surface}80` }}>
+                <PostFeed showTitle={true} />
+              </div>
+            </section>
+
+            {/* BARBERS */}
+            {shop?.barbers && shop.barbers.length > 0 && (
+              <section className="max-w-lg mx-auto px-5 pb-6">
+                <p className="text-[11px] uppercase tracking-widest font-semibold mb-3" style={{ color: `${accent}50` }}>Tim Barber</p>
+                <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+                  {shop.barbers.map(barber => (
+                    <Link key={barber.id} href="/book" onClick={handleBookClick} className="flex-shrink-0 w-24 text-center space-y-2 group active:scale-95 transition-all">
+                      <div className="w-20 h-20 mx-auto rounded-2xl overflow-hidden border-2" style={{ borderColor: `${primary}30`, background: surface }}>
+                        {barber.photo_url ? <img src={barber.photo_url} alt={barber.name} className="w-full h-full object-cover group-hover:opacity-90 transition-opacity" /> : <div className="w-full h-full flex items-center justify-center text-3xl" style={{ background: `${primary}10` }}>👤</div>}
+                      </div>
+                      <p className="text-xs font-semibold leading-tight truncate" style={{ color: accent }}>{barber.name}</p>
+                      {barber.specialty && <p className="text-[10px] leading-tight truncate" style={{ color: `${accent}50` }}>{barber.specialty}</p>}
+                    </Link>
+                  ))}
+                </div>
+              </section>
+            )}
+
             {/* SERVICES */}
             <section className="max-w-lg mx-auto px-5 pb-6">
               <p className="text-[11px] uppercase tracking-widest font-semibold mb-3" style={{ color: `${accent}50` }}>Layanan Kami</p>
@@ -468,31 +493,6 @@ export default function DashboardPage() {
                   )}
                 </div>
               )}
-            </section>
-
-            {/* BARBERS */}
-            {shop?.barbers && shop.barbers.length > 0 && (
-              <section className="max-w-lg mx-auto px-5 pb-6">
-                <p className="text-[11px] uppercase tracking-widest font-semibold mb-3" style={{ color: `${accent}50` }}>Tim Barber</p>
-                <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
-                  {shop.barbers.map(barber => (
-                    <Link key={barber.id} href="/book" onClick={handleBookClick} className="flex-shrink-0 w-24 text-center space-y-2 group active:scale-95 transition-all">
-                      <div className="w-20 h-20 mx-auto rounded-2xl overflow-hidden border-2" style={{ borderColor: `${primary}30`, background: surface }}>
-                        {barber.photo_url ? <img src={barber.photo_url} alt={barber.name} className="w-full h-full object-cover group-hover:opacity-90 transition-opacity" /> : <div className="w-full h-full flex items-center justify-center text-3xl" style={{ background: `${primary}10` }}>👤</div>}
-                      </div>
-                      <p className="text-xs font-semibold leading-tight truncate" style={{ color: accent }}>{barber.name}</p>
-                      {barber.specialty && <p className="text-[10px] leading-tight truncate" style={{ color: `${accent}50` }}>{barber.specialty}</p>}
-                    </Link>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* POST FEED */}
-            <section className="max-w-lg mx-auto px-5 pb-6">
-              <div className="border-t pt-6" style={{ borderColor: `${surface}80` }}>
-                <PostFeed showTitle={true} />
-              </div>
             </section>
           </div>
         )}
