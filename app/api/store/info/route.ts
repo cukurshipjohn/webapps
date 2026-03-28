@@ -17,7 +17,27 @@ export async function GET(request: NextRequest) {
         // Priority 1: x-tenant-id header injected by middleware (subdomain routing)
         let { tenantId } = getTenantFromRequest(request);
 
-        // Priority 2: Read from JWT token (works for localhost:3000/dashboard)
+        // Priority 2: Extract slug langsung di tingkat API dari Host Header 
+        if (!tenantId) {
+            const hostname = request.headers.get('host') || '';
+            const rootDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || 'cukurship.id';
+            let slug = request.nextUrl.searchParams.get('tenant'); // untuk localhost fallback
+
+            if (!slug && hostname.endsWith(`.${rootDomain}`)) {
+                slug = hostname.replace(`.${rootDomain}`, '');
+            }
+
+            if (slug && !['www', 'app', 'api', 'mail', 'smtp'].includes(slug)) {
+                const { data } = await supabaseAdmin
+                    .from('tenants')
+                    .select('id')
+                    .or(`effective_slug.eq.${slug},slug.eq.${slug}`)
+                    .single();
+                if (data?.id) tenantId = data.id;
+            }
+        }
+
+        // Priority 3: Read from JWT token (Fallback terakhir jika diakses lokal)
         if (!tenantId) {
             const user = getUserFromToken(request);
             if (user?.tenant_id) {
