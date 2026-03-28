@@ -5,9 +5,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 
 const navLinks = [
-    { name: "Overview", href: "/superadmin", icon: "📡", exact: true },
-    { name: "Semua Toko", href: "/superadmin/tenants", icon: "🏪", exact: false },
+    { name: "Overview",   href: "/superadmin",           icon: "📡", exact: true },
+    { name: "Semua Toko", href: "/superadmin/tenants",   icon: "🏪", exact: false },
+    { name: "WhatsApp",   href: "/superadmin/whatsapp",  icon: "💬", exact: false },
 ];
+
 
 export default function SuperadminLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
