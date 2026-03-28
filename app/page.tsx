@@ -331,9 +331,9 @@ export default function LandingPage() {
                             </div>
                         </div>
                         <div className="flex items-center gap-6 text-sm text-neutral-500">
-                            <a href="https://wa.me/62xxxxxxxxxx" target="_blank" rel="noopener"
+                            <a href="https://wa.me/6287836993805" target="_blank" rel="noopener"
                                 className="hover:text-green-400 transition-colors flex items-center gap-1.5">
-                                💬 WhatsApp Support
+                                💬 Lapor Bug / Support
                             </a>
                             <Link href="/register" className="hover:text-amber-400 transition-colors">Daftar</Link>
                             <Link href="/admin/login" className="hover:text-white transition-colors">Login Admin</Link>
