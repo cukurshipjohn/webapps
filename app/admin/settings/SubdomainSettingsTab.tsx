@@ -119,7 +119,7 @@ export default function SubdomainSettingsTab() {
             } catch {
                 setSlugCheck({ status: "unavailable", message: "Gagal mengecek ketersediaan" });
             }
-        }, 500);
+        }, 1500);
     };
 
     const handleSave = async () => {
