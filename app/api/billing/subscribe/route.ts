@@ -67,24 +67,15 @@ export async function POST(request: NextRequest) {
                 quantity: 1,
             }];
         } else {
-            // Paket tahunan — tampilkan harga asli + baris diskon
-            // Sehingga Midtrans invoice terlihat transparan
-            const originalPrice = plan.original_annual_price!;
-            const discountAmount = originalPrice - plan.price;
-
+            // Paket tahunan — QRIS/GoPay menolak 'price' negatif (minus) di item_details.
+            // Solusi: Kita jadikan 1 baris saja langsung dengan nominal akhir harga setelah diskon.
             item_details = [
                 {
                     id: plan_id,
-                    name: `Langganan ${plan.name} - 1 Tahun`,
-                    price: originalPrice,
+                    name: `${plan.name} (Diskon ${plan.discount_percent}%)`,
+                    price: plan.price, // Harga harus selalu positif
                     quantity: 1,
-                },
-                {
-                    id: `disc_${plan_id}`,
-                    name: `Diskon ${plan.discount_percent}% Paket Tahunan`,
-                    price: -discountAmount,   // nilai negatif = diskon di Midtrans
-                    quantity: 1,
-                },
+                }
             ];
         }
 
