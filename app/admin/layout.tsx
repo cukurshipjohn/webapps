@@ -10,6 +10,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [shopName, setShopName] = useState("...");
   const [shopSlug, setShopSlug] = useState<string | null>(null);
+  const [shopLogo, setShopLogo] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id";
@@ -52,6 +53,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       .then(d => {
         if (d.shop_name) setShopName(d.shop_name);
         if (d.slug) setShopSlug(d.slug);
+        if (d.logo_url) setShopLogo(d.logo_url);
       })
       .catch(() => {});
   }, []);
@@ -62,6 +64,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       document.title = `${shopName} – Admin Panel`;
     }
   }, [shopName]);
+
+  // Set favicon dynamically from tenant logo
+  useEffect(() => {
+    if (shopLogo) {
+      let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.href = shopLogo;
+    }
+  }, [shopLogo]);
 
   const shopUrl = shopSlug ? `https://${shopSlug}.${appDomain}` : null;
 

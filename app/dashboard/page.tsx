@@ -186,6 +186,17 @@ export default function DashboardPage() {
     // Set page title to tenant shop name
     document.title = shop.shop_name || 'Barbershop';
 
+    // Set favicon to tenant logo
+    if (shop.logo_url) {
+      let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.href = shop.logo_url;
+    }
+
     // Cleanup: reset when component unmounts
     return () => {
       root.style.removeProperty('--color-primary');

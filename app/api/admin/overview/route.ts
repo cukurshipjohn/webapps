@@ -115,10 +115,14 @@ export async function GET(request: NextRequest) {
         const upcoming_bookings = results[5].data || [];
         const barbers_list = results[6].data || [];
 
-        // --- 4. Fetch tenant info (slug & shop_name) ---
+        // --- 4. Fetch tenant info (slug, shop_name & logo) ---
         const { data: tenantInfo } = await supabaseAdmin
             .from('tenants')
-            .select('slug, shop_name')
+            .select(`
+                slug, 
+                shop_name,
+                tenant_settings(logo_url)
+            `)
             .eq('id', user.tenant_id!)
             .single();
 
@@ -133,6 +137,9 @@ export async function GET(request: NextRequest) {
             barbers_list,
             slug: tenantInfo?.slug || null,
             shop_name: tenantInfo?.shop_name || null,
+            logo_url: (tenantInfo?.tenant_settings as any)?.[0]?.logo_url 
+                        || (tenantInfo?.tenant_settings as any)?.logo_url 
+                        || null,
         };
         
         return NextResponse.json(responseData);
