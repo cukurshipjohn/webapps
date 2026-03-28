@@ -216,7 +216,7 @@ async function sendWhatsApp(transaction: any, message: string): Promise<void> {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${waSecret}`,  // ← WHATSAPP_SERVICE_SECRET, bukan x-internal-secret
+            'x-internal-secret': waSecret,  // ← WA service pakai x-internal-secret, BUKAN Authorization Bearer
         },
         body: JSON.stringify({ phoneNumber: owner.phone_number, message }),
     });
