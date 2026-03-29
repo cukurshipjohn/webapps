@@ -119,7 +119,8 @@ export async function GET(request: NextRequest) {
         const { data: tenantInfo } = await supabaseAdmin
             .from('tenants')
             .select(`
-                slug, 
+                slug,
+                effective_slug,
                 shop_name,
                 tenant_settings(logo_url)
             `)
@@ -136,6 +137,7 @@ export async function GET(request: NextRequest) {
             upcoming_bookings,
             barbers_list,
             slug: tenantInfo?.slug || null,
+            effective_slug: (tenantInfo as any)?.effective_slug || tenantInfo?.slug || null,
             shop_name: tenantInfo?.shop_name || null,
             logo_url: (tenantInfo?.tenant_settings as any)?.[0]?.logo_url 
                         || (tenantInfo?.tenant_settings as any)?.logo_url 

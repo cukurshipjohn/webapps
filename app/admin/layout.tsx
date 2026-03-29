@@ -10,6 +10,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [shopName, setShopName] = useState("...");
   const [shopSlug, setShopSlug] = useState<string | null>(null);
+  const [shopEffectiveSlug, setShopEffectiveSlug] = useState<string | null>(null);
   const [shopLogo, setShopLogo] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -53,6 +54,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       .then(d => {
         if (d.shop_name) setShopName(d.shop_name);
         if (d.slug) setShopSlug(d.slug);
+        if (d.effective_slug) setShopEffectiveSlug(d.effective_slug);
         if (d.logo_url) setShopLogo(d.logo_url);
       })
       .catch(() => {});
@@ -78,7 +80,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   }, [shopLogo, pathname]);
 
-  const shopUrl = shopSlug ? `https://${shopSlug}.${appDomain}` : null;
+  const shopUrl = (shopEffectiveSlug || shopSlug) ? `https://${shopEffectiveSlug || shopSlug}.${appDomain}` : null;
 
   const handleCopy = () => {
     if (!shopUrl) return;
