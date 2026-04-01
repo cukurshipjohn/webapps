@@ -18,5 +18,11 @@
       ],
       "destination": "/:path*"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/affiliate-commissions",
+      "schedule": "0 17 * * *"
+    }
   ]
 }

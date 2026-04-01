@@ -1,6 +1,10 @@
 import Link from "next/link";
 
 export default function ShopNotFound() {
+    const isDev = process.env.NODE_ENV === "development";
+    const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id";
+    const rootUrl = isDev ? "http://localhost:3000" : `https://${appDomain}`;
+
     return (
         <main className="min-h-screen bg-neutral-950 flex items-center justify-center p-6 relative overflow-hidden">
             <div className="absolute inset-0 pointer-events-none">
@@ -23,15 +27,15 @@ export default function ShopNotFound() {
                     <p className="text-neutral-400 text-sm">
                         Daftarkan barbershop Anda dan dapatkan halaman booking profesional dalam 5 menit. Gratis 14 hari!
                     </p>
-                    <Link href="/register"
+                    <a href={`${rootUrl}/register`}
                         className="inline-flex w-full items-center justify-center py-3 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl text-sm transition-all shadow-[0_0_20px_rgba(245,158,11,0.2)]">
-                        Dafftar Barbershop Gratis →
-                    </Link>
+                        Daftar Barbershop Gratis →
+                    </a>
                 </div>
 
-                <Link href="/" className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors">
-                    ← Kembali ke {process.env.NEXT_PUBLIC_APP_DOMAIN || "beranda"}
-                </Link>
+                <a href={`${rootUrl}/`} className="text-sm text-neutral-500 hover:text-neutral-300 transition-colors inline-block mt-4">
+                    ← Kembali ke Beranda
+                </a>
             </div>
         </main>
     );

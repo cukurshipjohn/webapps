@@ -5,9 +5,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 
 const navLinks = [
-    { name: "Overview",   href: "/superadmin",           icon: "📡", exact: true },
-    { name: "Semua Toko", href: "/superadmin/tenants",   icon: "🏪", exact: false },
-    { name: "WhatsApp",   href: "/superadmin/whatsapp",  icon: "💬", exact: false },
+    { name: "Overview",   href: "/superadmin",             icon: "📡", exact: true },
+    { name: "Semua Toko", href: "/superadmin/tenants",     icon: "🏪", exact: false },
+    { name: "Affiliates", href: "/superadmin/affiliates",  icon: "👥", exact: false },
+    { name: "WhatsApp",   href: "/superadmin/whatsapp",    icon: "💬", exact: false },
 ];
 
 

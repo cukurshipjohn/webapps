@@ -52,8 +52,55 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [affiliateName, setAffiliateName] = useState<string | null>(null);
 
   const slugDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ─── Track Affiliate ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const searchParams = new URLSearchParams(window.location.search);
+    const ref = searchParams.get("ref");
+    const utm_source = searchParams.get("utm_source");
+
+    const trackAffiliate = async (code: string) => {
+      try {
+        sessionStorage.setItem("referral_code", code);
+        if (utm_source) sessionStorage.setItem("referral_utm_source", utm_source);
+
+        const res = await fetch("/api/affiliate/track", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            referral_code: code,
+            landing_page: window.location.href,
+            utm_source: utm_source,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.valid && data.affiliate_name) {
+            setAffiliateName(data.affiliate_name);
+            if (data.click_id) {
+              sessionStorage.setItem("affiliate_click_id", data.click_id);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to track affiliate", err);
+      }
+    };
+
+    if (ref) {
+      trackAffiliate(ref);
+    } else {
+      const storedRef = sessionStorage.getItem("referral_code");
+      if (storedRef && !affiliateName) {
+        trackAffiliate(storedRef);
+      }
+    }
+  }, []);
 
   // ─── Auto-generate slug from shop name ─────────────────────────────────────
   useEffect(() => {
@@ -160,6 +207,8 @@ export default function RegisterPage() {
           slug: form.slug,
           owner_phone: form.owner_phone,
           owner_name: form.owner_name,
+          referral_code: sessionStorage.getItem("referral_code") || undefined,
+          affiliate_click_id: sessionStorage.getItem("affiliate_click_id") || undefined,
         }),
       });
       const data = await res.json();
@@ -173,15 +222,19 @@ export default function RegisterPage() {
       }));
       localStorage.setItem("token", data.token);
 
+      sessionStorage.removeItem("referral_code");
+      sessionStorage.removeItem("referral_utm_source");
+      sessionStorage.removeItem("affiliate_click_id");
+
       setSuccess(true);
 
-      // Redirect ke admin panel (in production: slug.cukurship.id/admin, in dev: /admin)
-      const isDev = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+      // Redirect ke admin panel (in production: slug.cukurship.id/admin/login, in dev: /admin/login)
+      const isDev = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.hostname.startsWith("192.168.") || window.location.hostname.startsWith("10.");
       if (isDev) {
-        setTimeout(() => router.push("/admin"), 1500);
+        setTimeout(() => router.push(`/admin/login?tenant=${form.slug}`), 1500);
       } else {
         setTimeout(() => {
-          window.location.href = `https://${form.slug}.${ROOT_DOMAIN}/admin`;
+          window.location.href = `https://${form.slug}.${ROOT_DOMAIN}/admin/login`;
         }, 1500);
       }
     } catch (e: any) {
@@ -236,6 +289,12 @@ export default function RegisterPage() {
           <h1 className="text-3xl font-bold text-white">Daftarkan Barbershop Anda</h1>
           <p className="text-neutral-400 mt-2 text-sm">14 hari gratis, tanpa kartu kredit</p>
         </div>
+
+        {affiliateName && (
+          <div className="bg-amber-500/10 border border-amber-500/30 text-amber-400 px-4 py-3 rounded-xl text-center mb-8 animate-in fade-in slide-in-from-top-4 duration-500 font-medium">
+            🎉 Kamu diundang oleh <span className="font-bold">{affiliateName}</span>! Daftar sekarang.
+          </div>
+        )}
 
         {/* Step Indicator */}
         <div className="flex items-center justify-center gap-0 mb-8">

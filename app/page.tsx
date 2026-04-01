@@ -363,6 +363,7 @@ export default function LandingPage() {
                                 💬 Lapor Bug / Support
                             </a>
                             <Link href="/register" onClick={trackLead} className="hover:text-amber-400 transition-colors">Daftar</Link>
+                            <Link href="/affiliate" className="hover:text-amber-400 transition-colors font-bold flex items-center gap-1">💰 Afiliasi</Link>
                             <Link href="/admin/login" className="hover:text-white transition-colors">Login Admin</Link>
                         </div>
                     </div>

@@ -18,8 +18,9 @@ const ROOT_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || 'cukurship.id';
 function extractTenantSlug(request: NextRequest): string | null {
     const hostname = request.headers.get('host') || '';
 
-    // localhost / development: baca query param ?tenant=slug sebagai fallback
-    if (hostname.includes('localhost') || hostname.includes('127.0.0.1')) {
+    // localhost / development / LAN IP: baca query param ?tenant=slug sebagai fallback
+    const isLocal = hostname.includes('localhost') || hostname.includes('127.0.0.1') || hostname.startsWith('192.168.') || hostname.startsWith('10.');
+    if (isLocal) {
         const tenantParam = request.nextUrl.searchParams.get('tenant');
         return tenantParam || null;
     }
@@ -40,8 +41,9 @@ function extractTenantSlug(request: NextRequest): string | null {
  * effective_slug = custom_slug jika sudah diatur, = slug jika belum.
  */
 async function getTenantBySlug(slug: string) {
+    const encodedSlug = encodeURIComponent(slug);
     const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/tenants?effective_slug=eq.${encodeURIComponent(slug)}&select=id,slug,effective_slug,custom_slug,shop_name,is_active,plan_expires_at&limit=1`,
+        `${SUPABASE_URL}/rest/v1/tenants?or=(effective_slug.eq.${encodedSlug},slug.eq.${encodedSlug})&select=id,slug,effective_slug,custom_slug,shop_name,is_active,plan_expires_at&limit=1`,
         {
             headers: {
                 'apikey': SUPABASE_ANON_KEY,

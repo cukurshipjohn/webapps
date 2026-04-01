@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getPlanById, getPlanDurationDays, isAnnualPlan } from '@/lib/billing-plans';
+import { calculateCommission, getCommissionAvailableDate, formatRupiah } from '@/lib/affiliate';
 import crypto from 'crypto';
 
 /**
@@ -123,6 +124,98 @@ export async function POST(request: NextRequest) {
 
             console.log(`[Billing Webhook] ✅ Tenant ${tenantId} → plan=${planId}, expires=${periodEnd.toISOString()}`);
 
+            // === AFFILIATE COMMISSION ===
+            // Skip komisi jika plan adalah 'trial'
+            if (planId !== 'trial') {
+                const { data: referral } = await supabaseAdmin
+                    .from('affiliate_referrals')
+                    .select(`
+                        id, affiliate_id, status,
+                        affiliates (
+                            id, name, phone, commission_rate, commission_type, status,
+                            total_paid_referrals
+                        )
+                    `)
+                    .eq('tenant_id', tenantId)
+                    .single();
+
+                const affiliate = Array.isArray(referral?.affiliates) 
+                    ? referral.affiliates[0] 
+                    : referral?.affiliates;
+
+                if (referral && affiliate?.status === 'active') {
+                    const isFirstPayment = referral.status === 'registered';
+                    
+                    const shouldCreateCommission =
+                        affiliate.commission_type === 'recurring' ||
+                        (affiliate.commission_type === 'one-time' && isFirstPayment);
+
+                    if (shouldCreateCommission) {
+                        // Midtrans sering mengirim gross_amount sebagai sting dengan trailing nol (".00")
+                        const transactionAmount = Math.round(Number(gross_amount));
+
+                        const commissionAmount = calculateCommission(
+                            transactionAmount,
+                            affiliate.commission_rate
+                        );
+                        const availableAt = getCommissionAvailableDate();
+
+                        const { error: commissionError } = await supabaseAdmin
+                            .from('affiliate_commissions')
+                            .insert({
+                                affiliate_id: affiliate.id,
+                                referral_id: referral.id,
+                                transaction_id: transaction.id,
+                                tenant_id: tenantId,
+                                amount: commissionAmount,
+                                commission_rate: affiliate.commission_rate,
+                                transaction_amount: transactionAmount,
+                                type: 'subscription',
+                                status: 'pending',
+                                available_at: availableAt.toISOString()
+                            });
+
+                        if (commissionError) {
+                            console.error('[Billing Webhook] ❌ Failed to insert commission:', commissionError);
+                            // Kegagalan tidak memblokir aktivasi Tenant, tapi menghentikan alur penguncian Referral.
+                        } else {
+                            if (isFirstPayment) {
+                                await supabaseAdmin
+                                    .from('affiliate_referrals')
+                                    .update({ status: 'converted', first_paid_at: now.toISOString() })
+                                    .eq('id', referral.id);
+
+                                await supabaseAdmin
+                                    .from('affiliates')
+                                    .update({ total_paid_referrals: affiliate.total_paid_referrals + 1 })
+                                    .eq('id', affiliate.id);
+                            }
+
+                            // Kirim WA notifikasi ke affiliator
+                            if (process.env.WHATSAPP_SERVICE_URL && process.env.WHATSAPP_SERVICE_SECRET) {
+                                const baseUrl = process.env.WHATSAPP_SERVICE_URL.startsWith('http') 
+                                    ? process.env.WHATSAPP_SERVICE_URL 
+                                    : `https://${process.env.WHATSAPP_SERVICE_URL}`;
+                                
+                                const planName = plan?.name ?? planId;
+                                await fetch(`${baseUrl}/send-message`, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Authorization': process.env.WHATSAPP_SERVICE_SECRET!
+                                    },
+                                    body: JSON.stringify({
+                                        phoneNumber: affiliate.phone,
+                                        message: `💰 *Komisi baru!*\n\nPaket: ${planName}\nTransaksi: ${formatRupiah(transactionAmount)}\nKomisi (${affiliate.commission_rate}%): ${formatRupiah(commissionAmount)}\n\nBisa dicairkan: ${availableAt.toLocaleDateString('id-ID', {day:'numeric',month:'long',year:'numeric'})}`
+                                    })
+                                }).catch(err => console.error('[Billing Webhook] WA send error for affiliate:', err));
+                            }
+                        }
+                    }
+                }
+            }
+            // === END AFFILIATE COMMISSION ===
+
             // ── 3c. Kirim WA konfirmasi ke owner (non-blocking) ────────────────────
             const shopName      = transaction.tenants?.shop_name || 'Toko Anda';
             const periodEndStr  = periodEnd.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -216,7 +309,7 @@ async function sendWhatsApp(transaction: any, message: string): Promise<void> {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'x-internal-secret': waSecret,  // ← WA service pakai x-internal-secret, BUKAN Authorization Bearer
+            'Authorization': waSecret,
         },
         body: JSON.stringify({ phoneNumber: owner.phone_number, message }),
     });

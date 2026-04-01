@@ -8,7 +8,7 @@ function generateOTP(): string {
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { phoneNumber, isAdminLogin } = body;
+        const { phoneNumber, isAdminLogin, isAffiliateLogin } = body;
 
         if (!phoneNumber) {
             return NextResponse.json({ message: 'Nomor HP diperlukan.' }, { status: 400 });
@@ -22,8 +22,27 @@ export async function POST(request: Request) {
                 .eq('phone_number', phoneNumber)
                 .single();
 
-            if (userError || !userData || !['owner', 'superadmin', 'barber'].includes(userData.role)) {
+            if (userError || !userData || !['owner', 'superadmin'].includes(userData.role)) {
                 return NextResponse.json({ message: 'Akses Ditolak: Nomor ini tidak terdaftar sebagai Admin/Tenant.' }, { status: 403 });
+            }
+        }
+
+        // Affiliate Portal Check
+        if (isAffiliateLogin) {
+            const { data: affData } = await supabaseAdmin
+                .from('affiliates')
+                .select('id, status')
+                .eq('phone', phoneNumber)
+                .maybeSingle();
+
+            if (!affData) {
+                return NextResponse.json({ message: 'Nomor tidak terdaftar sebagai affiliator.' }, { status: 403 });
+            }
+            if (affData.status === 'pending') {
+                return NextResponse.json({ message: 'Akun Anda sedang menunggu persetujuan admin.' }, { status: 403 });
+            }
+            if (affData.status === 'suspended') {
+                return NextResponse.json({ message: 'Akun Anda telah dinonaktifkan. Hubungi admin.' }, { status: 403 });
             }
         }
 
@@ -86,7 +105,7 @@ export async function POST(request: Request) {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'x-internal-secret': serviceSecret,
+                        'Authorization': serviceSecret,
                     },
                     body: JSON.stringify({ phoneNumber, otpCode }),
                     signal: AbortSignal.timeout(6000),

@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { phoneNumber, otpCode } = body;
+        const { phoneNumber, otpCode, isAffiliateLogin } = body;
 
         if (!phoneNumber || !otpCode) {
             return NextResponse.json({ message: 'Nomor HP dan kode OTP diperlukan.' }, { status: 400 });
@@ -38,6 +38,55 @@ export async function POST(request: NextRequest) {
             .from('otp_sessions')
             .update({ used: true })
             .eq('id', sessions[0].id);
+
+        // 3. Cek apakah ini affiliate login — buat JWT khusus affiliator
+        if (isAffiliateLogin) {
+            const { data: affUser, error: affError } = await supabaseAdmin
+                .from('affiliates')
+                .select('id, name, phone, tier, referral_code, commission_rate, status')
+                .eq('phone', phoneNumber)
+                .single();
+
+            if (affError || !affUser) {
+                return NextResponse.json({ message: 'Data affiliator tidak ditemukan.' }, { status: 404 });
+            }
+
+            const affToken = jwt.sign(
+                {
+                    affiliate_id: affUser.id,
+                    phone: affUser.phone,
+                    name: affUser.name,
+                    tier: affUser.tier,
+                    role: 'affiliate',
+                },
+                process.env.JWT_SECRET || 'fallback_secret',
+                { expiresIn: '7d' }
+            );
+
+            const affResponse = NextResponse.json({
+                message: 'Login affiliator berhasil!',
+                token: affToken,
+                affiliate: {
+                    id: affUser.id,
+                    name: affUser.name,
+                    phone: affUser.phone,
+                    tier: affUser.tier,
+                    referral_code: affUser.referral_code,
+                },
+            });
+
+            affResponse.cookies.set({
+                name: 'affiliate_token',
+                value: affToken,
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'lax',
+                path: '/',
+                maxAge: 60 * 60 * 24 * 7, // 7 hari
+            });
+
+            return affResponse;
+        }
 
         // 3. Cari atau buat user — assign tenant_id jika ada
         const { data: existingUsers } = await supabaseAdmin

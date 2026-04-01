@@ -8,7 +8,7 @@ const ROOT_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || 'cukurship.id';
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { shop_name, slug, owner_phone, owner_name } = body;
+        const { shop_name, slug, owner_phone, owner_name, referral_code, affiliate_click_id } = body;
 
         // ─── 1. VALIDASI INPUT ─────────────────────────────────────────────
         if (!shop_name || !slug || !owner_phone || !owner_name) {
@@ -75,6 +75,7 @@ export async function POST(request: NextRequest) {
             .from('tenants')
             .insert({
                 slug,
+                effective_slug: slug,
                 shop_name,
                 owner_user_id: userId,
                 plan: 'trial',
@@ -122,7 +123,82 @@ export async function POST(request: NextRequest) {
             { expiresIn: '24h' }
         );
 
-        // ─── 8. KIRIM WA SAMBUTAN ─────────────────────────────────────────
+        // ─── 8. PROSES AFFILIATE REFERRAL ─────────────────────────────────
+        if (referral_code) {
+            try {
+                const { data: affiliate } = await supabaseAdmin
+                    .from('affiliates')
+                    .select('id, name, phone, status')
+                    .eq('referral_code', referral_code)
+                    .eq('status', 'active')
+                    .maybeSingle();
+
+                if (affiliate) {
+                    // Update referred_by_code di tenants
+                    await supabaseAdmin
+                        .from('tenants')
+                        .update({ referred_by_code: referral_code })
+                        .eq('id', tenantId);
+
+                    // Insert ke affiliate_referrals
+                    await supabaseAdmin
+                        .from('affiliate_referrals')
+                        .insert({
+                            affiliate_id: affiliate.id,
+                            tenant_id: tenantId,
+                            referral_code,
+                            status: 'registered'
+                        });
+
+                    // Update total_referrals via direct update or standard query
+                    const { data: currAff } = await supabaseAdmin
+                        .from('affiliates')
+                        .select('total_referrals')
+                        .eq('id', affiliate.id)
+                        .single();
+                    
+                    if (currAff) {
+                        await supabaseAdmin
+                            .from('affiliates')
+                            .update({ total_referrals: (currAff.total_referrals || 0) + 1 })
+                            .eq('id', affiliate.id);
+                    }
+
+                    // Update affiliate_clicks
+                    if (affiliate_click_id) {
+                        await supabaseAdmin
+                            .from('affiliate_clicks')
+                            .update({ 
+                                converted: true, 
+                                converted_tenant_id: tenantId 
+                            })
+                            .eq('id', affiliate_click_id)
+                            .eq('affiliate_id', affiliate.id);
+                    }
+
+                    // Kirim Notifikasi WA ke Affiliator
+                    let waServiceUrl = process.env.WHATSAPP_SERVICE_URL;
+                    const waSecret = process.env.WHATSAPP_SERVICE_SECRET;
+                    if (waServiceUrl && waSecret) {
+                        if (!waServiceUrl.startsWith('http')) waServiceUrl = `https://${waServiceUrl}`;
+                        const affMessage = `🎉 *Referral Baru!*\n\nToko *${shop_name}* baru saja mendaftar via kode kamu.\nStatus: Menunggu pembayaran pertama\nKode: ${referral_code}`;
+                        
+                        fetch(`${waServiceUrl}/send-message`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': waSecret,
+                            },
+                            body: JSON.stringify({ phoneNumber: affiliate.phone, message: affMessage }),
+                        }).catch(err => console.error('[Register Shop] WA Affiliate error:', err));
+                    }
+                }
+            } catch (affError) {
+                console.error('[Register Shop] Affiliate referral tracking error:', affError);
+            }
+        }
+
+        // ─── 9. KIRIM WA SAMBUTAN ─────────────────────────────────────────
         let waServiceUrl = process.env.WHATSAPP_SERVICE_URL;
         const waSecret = process.env.WHATSAPP_SERVICE_SECRET;
 
@@ -140,13 +216,13 @@ export async function POST(request: NextRequest) {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'x-internal-secret': waSecret,
+                    'Authorization': waSecret,
                 },
                 body: JSON.stringify({ phoneNumber: owner_phone, message: welcomeMessage }),
             }).catch(err => console.error('[Register Shop] WA error:', err));
         }
 
-        // ─── 9. RETURN SUCCESS ─────────────────────────────────────────────
+        // ─── 10. RETURN SUCCESS ─────────────────────────────────────────────
         const response = NextResponse.json({
             success: true,
             token,
