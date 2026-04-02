@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -27,7 +27,7 @@ const OUTCOME_OPTIONS = [
     { value: 'churned_confirmed', label: 'Konfirmasi Churn' }
 ];
 
-export default function FollowupsPage() {
+function FollowupsContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
@@ -265,5 +265,13 @@ export default function FollowupsPage() {
                 </div>
             )}
         </div>
+    );
+}
+
+export default function FollowupsPage() {
+    return (
+        <Suspense fallback={<div className="text-center py-20 text-neutral-500">Memuat antarmuka...</div>}>
+            <FollowupsContent />
+        </Suspense>
     );
 }
