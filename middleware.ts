@@ -110,7 +110,19 @@ export async function middleware(request: NextRequest) {
     const isStaticFile = pathname.startsWith('/_next') || pathname.startsWith('/favicon') || pathname.startsWith('/public');
     const isErrorPage = pathname === '/shop-not-found' || pathname === '/subscription-expired' || pathname === '/404-shop' || pathname === '/suspended-shop';
 
-    if (isApiRoute || isStaticFile || isErrorPage) {
+    if (isStaticFile || isErrorPage) {
+        return NextResponse.next();
+    }
+
+    // Untuk API routes pada subdomain tenant: inject x-tenant-slug (tanpa DB call)
+    // sehingga API dapat melakukan lookup sendiri dengan identifier yang jelas
+    if (isApiRoute) {
+        const slugForApi = extractTenantSlug(request);
+        if (slugForApi) {
+            const apiHeaders = new Headers(request.headers);
+            apiHeaders.set('x-tenant-slug', slugForApi);
+            return NextResponse.next({ request: { headers: apiHeaders } });
+        }
         return NextResponse.next();
     }
 

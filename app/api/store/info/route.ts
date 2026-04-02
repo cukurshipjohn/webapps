@@ -20,8 +20,14 @@ export async function GET(request: NextRequest) {
         // Priority 2: Extract slug langsung di tingkat API dari Host Header 
         if (!tenantId) {
             const hostname = request.headers.get('host') || '';
-            const rootDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || 'cukurship.id';
+            // Strip protokol (https://) dari env agar hostname match benar di production
+            const rootDomain = (process.env.NEXT_PUBLIC_APP_DOMAIN || 'cukurship.id').replace(/^https?:\/\//, '');
             let slug = request.nextUrl.searchParams.get('tenant'); // untuk localhost fallback
+
+            // Coba dari header x-tenant-slug yang diinjek middleware
+            if (!slug) {
+                slug = request.headers.get('x-tenant-slug');
+            }
 
             if (!slug && hostname.endsWith(`.${rootDomain}`)) {
                 slug = hostname.replace(`.${rootDomain}`, '');
