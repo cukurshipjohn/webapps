@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-
 const navLinks = [
     { name: "Overview",   href: "/superadmin",             icon: "📡", exact: true },
     { name: "Semua Toko", href: "/superadmin/tenants",     icon: "🏪", exact: false },
     { name: "Affiliates", href: "/superadmin/affiliates",  icon: "👥", exact: false },
+    { name: "Pipeline CRM", href: "/superadmin/pipeline",  icon: "🎯", exact: false },
+    { name: "Riwayat Follow-up", href: "/superadmin/followups", icon: "📋", exact: false },
     { name: "WhatsApp",   href: "/superadmin/whatsapp",    icon: "💬", exact: false },
 ];
 
