@@ -79,32 +79,40 @@ export async function POST(
         let waErrorMsg = null;
 
         // LANGKAH 3 — Kirim ke WA gateway
-        const waUrl = process.env.WHATSAPP_SERVICE_URL;
+        // Pola IDENTIK dengan request-otp yang sudah terbukti jalan
+        let waUrl = process.env.WHATSAPP_SERVICE_URL;
         const waSecret = process.env.WHATSAPP_SERVICE_SECRET;
 
         if (waUrl && waSecret) {
+            if (!waUrl.startsWith('http')) waUrl = `https://${waUrl}`;
             try {
-                const baseUrl = waUrl.startsWith('http') ? waUrl : `https://${waUrl}`;
-                const waResponse = await fetch(`${baseUrl}/send-message`, {
+                const waResponse = await fetch(`${waUrl}/send-message`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${waSecret}`
+                        'Authorization': waSecret,  // TANPA 'Bearer' — sama persis dengan request-otp
                     },
-                    body: JSON.stringify({ phone: ownerPhone, message: pesanTemplate })
+                    body: JSON.stringify({
+                        phoneNumber: ownerPhone,   // key sama dengan request-otp
+                        message: pesanTemplate
+                    }),
+                    signal: AbortSignal.timeout(8000),  // timeout 8 detik
                 });
 
                 if (waResponse.ok) {
                     messageSent = true;
                 } else {
-                    waErrorMsg = `WA Gateway API returned ${waResponse.status}`;
+                    const errBody = await waResponse.json().catch(() => ({}));
+                    waErrorMsg = errBody.message || `WA Gateway returned HTTP ${waResponse.status}`;
+                    console.warn(`[Send-WA] WA gagal (${ownerPhone}): ${waErrorMsg}`);
                 }
             } catch (err: any) {
-                console.error('[Send-WA] Exception:', err);
-                waErrorMsg = err.message || 'Fatal error contacting WA Gateway';
+                waErrorMsg = err.message || 'WA Gateway tidak dapat dijangkau (timeout/network)';
+                console.error('[Send-WA] Exception:', waErrorMsg);
             }
         } else {
-            waErrorMsg = 'WA env vars missing';
+            waErrorMsg = 'WHATSAPP_SERVICE_URL atau WHATSAPP_SERVICE_SECRET belum dikonfigurasi';
+            console.warn(`[Send-WA] ${waErrorMsg}`);
         }
 
         // LANGKAH 4 — Catat otomatis ke superadmin_followups
