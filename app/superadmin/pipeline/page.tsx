@@ -49,7 +49,7 @@ export default function PipelinePage() {
     const [detailFollowups, setDetailFollowups] = useState<any[]>([]);
     const [detailLoading, setDetailLoading] = useState(false);
 
-    const getToken = () => window.localStorage.getItem('superadmintoken');
+    const getToken = () => window.localStorage.getItem('superadmin_token');
 
     const fetchData = useCallback(async () => {
         const token = getToken();

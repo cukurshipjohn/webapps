@@ -41,7 +41,7 @@ function FollowupsContent() {
     const [updatingId, setUpdatingId] = useState<string | null>(null);
     const [toast, setToast] = useState<{ msg: string, isError?: boolean } | null>(null);
 
-    const getToken = () => window.localStorage.getItem('superadmintoken');
+    const getToken = () => window.localStorage.getItem('superadmin_token');
 
     const fetchData = useCallback(async () => {
         const token = getToken();
