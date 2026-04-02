@@ -4,14 +4,14 @@ import { getUserFromToken, requireRole } from '@/lib/auth';
 
 export async function PATCH(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const user = getUserFromToken(request);
         if (!user) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
         requireRole(['owner', 'superadmin'], user.role);
 
-        const { id } = params;
+        const { id } = await params;
 
         // Validate ownership
         const { data: post, error: findError } = await supabaseAdmin

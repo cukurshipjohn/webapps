@@ -6,6 +6,8 @@ import { PLANS, type PlanId } from "@/lib/billing-plans";
 import PlanToggle from "@/components/PlanToggle";
 import PlanCard from "@/components/PlanCard";
 
+import PromoStatusBanner from "@/components/PromoStatusBanner";
+
 // Midtrans SnapJS dimuat via script tag
 declare global {
     interface Window { snap?: any }
@@ -200,6 +202,8 @@ function BillingPageInner() {
                 <h1 className="text-2xl font-bold text-white">💳 Billing &amp; Langganan</h1>
                 <p className="text-neutral-400 text-sm mt-1">Kelola paket dan pembayaran toko kamu</p>
             </div>
+            
+            <PromoStatusBanner />
 
             {/* ─── Section 1: Status Langganan Aktif ──────────────────────────── */}
             {billingData && (

@@ -11,13 +11,13 @@ function requireSuperAdmin(request: NextRequest) {
 
 export async function POST(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const user = requireSuperAdmin(request);
         if (user instanceof NextResponse) return user;
 
-        const tenantId = params.id;
+        const tenantId = (await params).id;
 
         // Ambil status tenant saat ini
         const { data: tenant, error: fetchError } = await supabaseAdmin

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../lib/supabase';
 import { getTenantFromRequest } from '../../../lib/tenant-context';
 import { getHomeServiceLimit } from '../../../lib/billing-plans';
+import { trackTenantActivity } from '../../../lib/activity-tracker';
 import jwt from 'jsonwebtoken';
 
 
@@ -151,6 +152,14 @@ export async function POST(request: NextRequest) {
             supabaseAdmin.from('services').select('name, price').eq('id', serviceId).single(),
             supabaseAdmin.from('tenant_settings').select('wa_session_id').eq('tenant_id', tenantId).single()
         ]);
+
+        // Fire-and-forget: catat event booking_created untuk health tracking
+        // TIDAK mempengaruhi response booking — jika gagal, booking tetap sukses
+        trackTenantActivity({
+            tenantId,
+            eventType: 'booking_created',
+            metadata: { booking_id: newBooking.id },
+        }).catch(() => {}); // silent fail
 
         const formattedTime = bookingTime.toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'short' });
         const customerName = user?.name || "Pelanggan Baru";

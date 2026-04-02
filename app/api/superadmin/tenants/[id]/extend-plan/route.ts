@@ -12,13 +12,13 @@ function requireSuperAdmin(request: NextRequest) {
 
 export async function POST(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const user = requireSuperAdmin(request);
         if (user instanceof NextResponse) return user;
 
-        const tenantId = params.id;
+        const tenantId = (await params).id;
         const body = await request.json();
         const { days = 30, plan: newPlan } = body;
 
@@ -52,8 +52,10 @@ export async function POST(
         };
 
         if (planData) {
-            updatePayload.max_barbers = planData.max_barbers === 9999 ? 999 : planData.max_barbers;
-            updatePayload.max_bookings_per_month = planData.max_bookings_per_month === 9999 ? 99999 : planData.max_bookings_per_month;
+            // 999999 adalah sentinel value untuk "unlimited" di billing-plans.ts
+            // Simpan ke DB sebagai nilai besar tapi valid (bukan Infinity)
+            updatePayload.max_barbers = planData.max_barbers >= 999999 ? 999999 : planData.max_barbers;
+            updatePayload.max_bookings_per_month = planData.max_bookings_per_month >= 999999 ? 999999 : planData.max_bookings_per_month;
         }
 
         const { error: updateError } = await supabaseAdmin

@@ -26,7 +26,7 @@ export default function PlanCard({
     // Savings info (only for annual plans)
     const savedAmount =
         isAnnual && plan.original_annual_price
-            ? plan.original_annual_price - plan.price
+            ? plan.original_annual_price - plan.normal_price
             : 0;
 
     const formatRp = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
@@ -86,7 +86,7 @@ export default function PlanCard({
                             </p>
                             {/* Harga diskon */}
                             <p className="text-3xl font-black text-white">
-                                {formatRp(plan.price)}
+                                {formatRp(plan.normal_price)}
                                 <span className="text-base font-normal text-neutral-400">/tahun</span>
                             </p>
                             {/* Efektif per bulan */}
@@ -103,7 +103,7 @@ export default function PlanCard({
                     ) : (
                         <>
                             <p className="text-3xl font-black text-white">
-                                {formatRp(plan.price)}
+                                {formatRp(plan.normal_price)}
                                 <span className="text-base font-normal text-neutral-400">/bulan</span>
                             </p>
                         </>

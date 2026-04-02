@@ -9,7 +9,7 @@ import { supabaseAdmin } from '@/lib/supabase';
  */
 export async function PATCH(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         // ─── 1. Auth ────────────────────────────────────────────────────────────
@@ -19,7 +19,7 @@ export async function PATCH(
             return NextResponse.json({ message: 'Forbidden: Superadmin only' }, { status: 403 });
         }
 
-        const tenantId = params.id;
+        const tenantId = (await params).id;
         if (!tenantId) return NextResponse.json({ message: 'ID tenant diperlukan.' }, { status: 400 });
 
         // ─── 2. Validasi body ────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromToken } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getPlanPrice, isInPromo } from '@/lib/billing-plans';
 
 function requireSuperAdmin(request: NextRequest) {
     const user = getUserFromToken(request);
@@ -76,14 +77,33 @@ export async function GET(request: NextRequest) {
             });
         }
 
-        const enrichedTenants = (tenants || []).map(t => ({
-            ...t,
-            // Normalisasi billing_cycle: jika kolom belum ada nilainya, derive dari plan
-            billing_cycle: t.billing_cycle || (t.plan?.endsWith('_annual') ? 'annual' : 'monthly'),
-            effective_slug: t.effective_slug || t.slug,
-            owner: ownerMap[t.owner_user_id] || null,
-            total_bookings: bookingCounts[t.id] || 0,
-        }));
+        // ─── Total valid transactions per tenant (for promo calculate) ────────────
+        const paidCyclesMap: Record<string, number> = {};
+        if (tenantIds.length > 0) {
+            const { data: txs } = await supabaseAdmin
+                .from('subscription_transactions')
+                .select('tenant_id')
+                .in('tenant_id', tenantIds)
+                .in('status', ['settled', 'paid']);
+            (txs || []).forEach(tx => {
+                paidCyclesMap[tx.tenant_id] = (paidCyclesMap[tx.tenant_id] || 0) + 1;
+            });
+        }
+
+        const enrichedTenants = (tenants || []).map(t => {
+            const paidCycles = paidCyclesMap[t.id] || 0;
+            return {
+                ...t,
+                // Normalisasi billing_cycle: jika kolom belum ada nilainya, derive dari plan
+                billing_cycle: t.billing_cycle || (t.plan?.endsWith('_annual') ? 'annual' : 'monthly'),
+                effective_slug: t.effective_slug || t.slug,
+                owner: ownerMap[t.owner_user_id] || null,
+                total_bookings: bookingCounts[t.id] || 0,
+                paid_cycles: paidCycles,
+                current_price: getPlanPrice(t.plan, paidCycles),
+                is_in_promo: isInPromo(t.plan, paidCycles)
+            };
+        });
 
         return NextResponse.json({ tenants: enrichedTenants });
 

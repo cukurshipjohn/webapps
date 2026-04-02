@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 // ── GET /api/posts/[id] — Detail satu post publik ─────────
 export async function GET(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const tenantId = request.headers.get('x-tenant-id');
@@ -12,7 +12,7 @@ export async function GET(
             return NextResponse.json({ message: 'Tenant tidak ditemukan.' }, { status: 404 });
         }
 
-        const { id } = params;
+        const { id } = await params;
         const now = new Date().toISOString();
 
         const { data, error } = await supabaseAdmin

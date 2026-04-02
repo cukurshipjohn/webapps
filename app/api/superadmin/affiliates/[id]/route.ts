@@ -8,14 +8,14 @@ import { getUserFromToken, requireRole } from '@/lib/auth';
  */
 export async function GET(
     request: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     const user = getUserFromToken(request);
     if (!user) return NextResponse.json({ message: 'Unauthorized.' }, { status: 401 });
     try { requireRole('superadmin', user.role); }
     catch { return NextResponse.json({ message: 'Akses ditolak.' }, { status: 403 }); }
 
-    const affiliateId = params.id;
+    const { id: affiliateId } = await params;
 
     try {
         // ─── 1. Profil affiliator ─────────────────────────────────────────────

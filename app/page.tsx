@@ -5,10 +5,9 @@ import Script from "next/script";
 import { useState, useEffect } from "react";
 import PostFeed from "@/components/PostFeed";
 
-// Plan data mirrored from lib/billing-plans.ts (untuk client component tanpa import langsung)
 const PLANS = [
     {
-        key: "starter", name: "Starter", price: 99000, price_annual: 990000, max_barbers: 2, max_bookings: 50,
+        key: "starter", name: "Starter", promo_price: 49000, normal_price: 79000, price_annual: 852000, max_barbers: 2, max_bookings: 50,
         features: [
             "Maks. 2 kapster",
             "Maks. 50 booking/bulan",
@@ -20,7 +19,7 @@ const PLANS = [
         popular: false,
     },
     {
-        key: "pro", name: "Pro", price: 199000, price_annual: 1890000, max_barbers: 5, max_bookings: 9999,
+        key: "pro", name: "Pro", promo_price: 99000, normal_price: 149000, price_annual: 1430400, max_barbers: 5, max_bookings: 9999,
         features: [
             "Maks. 5 kapster",
             "Booking tidak terbatas",
@@ -34,7 +33,7 @@ const PLANS = [
         popular: true,
     },
     {
-        key: "business", name: "Business", price: 349000, price_annual: 3140000, max_barbers: 9999, max_bookings: 9999,
+        key: "business", name: "Business", promo_price: 199000, normal_price: 299000, price_annual: 2691000, max_barbers: 9999, max_bookings: 9999,
         features: [
             "Kapster tidak terbatas",
             "Booking tidak terbatas",
@@ -260,8 +259,8 @@ export default function LandingPage() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {PLANS.map((plan) => {
                             const isAnnual = billingCycle === "annual";
-                            const displayPrice = isAnnual ? Math.round(plan.price_annual / 12) : plan.price;
-                            const savedAmount = isAnnual ? (plan.price * 12) - plan.price_annual : 0;
+                            const displayPrice = isAnnual ? Math.round(plan.price_annual / 12) : plan.promo_price;
+                            const savedAmount = isAnnual ? (plan.normal_price * 12) - plan.price_annual : 0;
 
                             return (
                             <div key={plan.key}
@@ -276,22 +275,34 @@ export default function LandingPage() {
                                     </div>
                                 )}
                                 <div>
+                                    {!isAnnual && (
+                                        <div className="mb-3 inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-full text-xs font-bold w-fit">
+                                            <span className="text-xl leading-none -mt-1">🎉</span> Harga Perkenalan
+                                        </div>
+                                    )}
                                     <h3 className="text-lg font-bold text-white">{plan.name}</h3>
                                     
                                     <div className="mt-2 min-h-16 flex flex-col justify-end">
-                                        {isAnnual && (
+                                        {isAnnual ? (
                                             <div className="flex items-center gap-2 mb-1">
                                                 <span className="text-sm font-medium text-neutral-500 line-through">
-                                                    {formatRupiah(plan.price)}
+                                                    {formatRupiah(plan.normal_price)}
                                                 </span>
                                                 <span className="text-[10px] font-bold px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full border border-green-500/30">
                                                     Hemat {formatRupiah(savedAmount)}/th
                                                 </span>
                                             </div>
+                                        ) : (
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-sm font-medium text-neutral-500 line-through">
+                                                    {formatRupiah(plan.normal_price)}
+                                                </span>
+                                                <span className="text-xs text-neutral-400">setelah 2 bln</span>
+                                            </div>
                                         )}
                                         <p className="text-3xl font-extrabold text-white flex items-end">
                                             {formatRupiah(displayPrice)}
-                                            <span className="text-sm font-normal text-neutral-400 pb-1 ml-1">/bln</span>
+                                            <span className="text-sm font-normal text-neutral-400 pb-1 ml-1">{isAnnual ? '/bln' : '/bln'}</span>
                                         </p>
                                     </div>
                                     
@@ -321,6 +332,11 @@ export default function LandingPage() {
                             </div>
                             );
                         })}
+                    </div>
+                    <div className="text-center mt-6">
+                        <p className="text-xs text-neutral-400 font-medium">
+                            *Harga perkenalan berlaku untuk 2 bulan pertama setiap toko baru.<br/>Tagihan akan menyesuaikan harga normal secara otomatis.
+                        </p>
                     </div>
                 </div>
             </section>

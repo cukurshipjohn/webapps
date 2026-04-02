@@ -3,13 +3,21 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
-function PlanBadge({ plan, isActive, expiresAt }: { plan: string; isActive: boolean; expiresAt: string | null }) {
+function PlanBadge({ plan, isActive, expiresAt, isInPromo }: { plan: string; isActive: boolean; expiresAt: string | null; isInPromo?: boolean }) {
     if (!isActive) return <span className="text-xs px-2 py-1 rounded-full bg-red-500/20 text-red-400 font-bold border border-red-500/20">🔴 Nonaktif</span>;
     const isExpired = expiresAt && new Date(expiresAt) < new Date();
     if (isExpired) return <span className="text-xs px-2 py-1 rounded-full bg-red-500/20 text-red-400 font-bold border border-red-500/20">🔴 Expired</span>;
     if (plan === "trial") return <span className="text-xs px-2 py-1 rounded-full bg-amber-500/20 text-amber-400 font-bold border border-amber-500/20">🟡 Trial</span>;
     if (plan?.endsWith("_annual")) return <span className="text-xs px-2 py-1 rounded-full bg-amber-500/20 text-amber-400 font-bold border border-amber-500/30 capitalize">✨ {plan.replace("_annual", "")} Tahunan</span>;
-    return <span className="text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400 font-bold border border-green-500/20 capitalize">🟢 {plan}</span>;
+    
+    return (
+        <div className="flex flex-col gap-1 items-start">
+            <span className="text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400 font-bold border border-green-500/20 capitalize">🟢 {plan}</span>
+            {isInPromo && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">✨ PROMO</span>
+            )}
+        </div>
+    );
 }
 
 // Filter jenis siklus
@@ -242,20 +250,27 @@ export default function SuperadminTenants() {
                                     </td>
 
                                     <td className="px-5 py-4">
-                                        <PlanBadge plan={t.plan} isActive={t.is_active} expiresAt={t.plan_expires_at} />
+                                        <PlanBadge plan={t.plan} isActive={t.is_active} expiresAt={t.plan_expires_at} isInPromo={t.is_in_promo} />
                                     </td>
 
                                     {/* Kolom Siklus (BARU) */}
                                     <td className="px-5 py-4">
-                                        {t.billing_cycle === "annual" ? (
-                                            <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold whitespace-nowrap">
-                                                Tahunan ✨
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-neutral-700/60 text-neutral-400 border border-neutral-600 font-medium">
-                                                Bulanan
-                                            </span>
-                                        )}
+                                        <div className="flex flex-col gap-1 items-start">
+                                            {t.billing_cycle === "annual" ? (
+                                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold whitespace-nowrap">
+                                                    Tahunan ✨
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-neutral-700/60 text-neutral-400 border border-neutral-600 font-medium">
+                                                    Bulanan
+                                                </span>
+                                            )}
+                                            {t.current_price !== undefined && t.plan !== "trial" && (
+                                                <span className="text-xs text-neutral-400">
+                                                    Rp {(t.current_price / 1000).toFixed(0)}k/bln
+                                                </span>
+                                            )}
+                                        </div>
                                     </td>
 
                                     <td className="px-5 py-4 text-xs">

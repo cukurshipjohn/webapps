@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
             .filter(t => t.is_active && t.plan?.endsWith('_annual'))
             .reduce((sum, t) => {
                 const plan = PLANS[t.plan as PlanId];
-                return sum + (plan?.price ?? 0);
+                return sum + (plan?.normal_price ?? 0);
             }, 0);
 
         // ─── 5. MRR dari transaksi bulan ini ────────────────────────────────────

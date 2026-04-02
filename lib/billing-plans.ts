@@ -5,12 +5,34 @@
 
 export const PLANS = {
   // ── BULANAN ────────────────────────────────────────────────
+  trial: {
+    id: 'trial',
+    name: 'Trial',
+    billing_cycle: 'monthly' as const,
+    promo_price: null,
+    normal_price: 0,
+    promo_duration_months: 0,
+    price_per_month: 0,
+    discount_percent: 0,
+    original_annual_price: null as null,
+    max_barbers: 1,
+    max_bookings_per_month: 10,
+    max_home_service_per_month: 0,
+    custom_subdomain: false,
+    subdomain_revisions: 0,
+    can_blast_wa: false,
+    features: [
+      'Fitur dasar uji coba gratis'
+    ],
+  },
   starter: {
     id: 'starter',
     name: 'Starter',
     billing_cycle: 'monthly' as const,
-    price: 99000,
-    price_per_month: 99000,
+    promo_price: 49000,
+    normal_price: 79000,
+    promo_duration_months: 2,
+    price_per_month: 79000,
     discount_percent: 0,
     original_annual_price: null as null,
     max_barbers: 2,
@@ -31,8 +53,10 @@ export const PLANS = {
     id: 'pro',
     name: 'Pro',
     billing_cycle: 'monthly' as const,
-    price: 199000,
-    price_per_month: 199000,
+    promo_price: 99000,
+    normal_price: 149000,
+    promo_duration_months: 2,
+    price_per_month: 149000,
     discount_percent: 0,
     original_annual_price: null as null,
     max_barbers: 5,
@@ -54,8 +78,10 @@ export const PLANS = {
     id: 'business',
     name: 'Business',
     billing_cycle: 'monthly' as const,
-    price: 349000,
-    price_per_month: 349000,
+    promo_price: 199000,
+    normal_price: 299000,
+    promo_duration_months: 2,
+    price_per_month: 299000,
     discount_percent: 0,
     original_annual_price: null as null,
     max_barbers: 999999,
@@ -77,10 +103,12 @@ export const PLANS = {
     id: 'starter_annual',
     name: 'Starter Tahunan',
     billing_cycle: 'annual' as const,
-    price: 1069200,              // 99.000 × 12 × 0.90
-    price_per_month: 89100,      // efektif per bulan
+    promo_price: null,
+    normal_price: 852000,
+    promo_duration_months: 0,
+    price_per_month: 71000,
     discount_percent: 10,
-    original_annual_price: 1188000, // 99.000 × 12
+    original_annual_price: 948000,
     max_barbers: 2,
     max_bookings_per_month: 50,
     max_home_service_per_month: 5,
@@ -98,10 +126,12 @@ export const PLANS = {
     id: 'pro_annual',
     name: 'Pro Tahunan',
     billing_cycle: 'annual' as const,
-    price: 1910400,              // 199.000 × 12 × 0.80
-    price_per_month: 159200,
+    promo_price: null,
+    normal_price: 1430400,
+    promo_duration_months: 0,
+    price_per_month: 119200,
     discount_percent: 20,
-    original_annual_price: 2388000,
+    original_annual_price: 1788000,
     max_barbers: 5,
     max_bookings_per_month: 999999,
     max_home_service_per_month: 999999,
@@ -119,10 +149,12 @@ export const PLANS = {
     id: 'business_annual',
     name: 'Business Tahunan',
     billing_cycle: 'annual' as const,
-    price: 3141000,              // 349.000 × 12 × 0.75
-    price_per_month: 261750,
+    promo_price: null,
+    normal_price: 2691000,
+    promo_duration_months: 0,
+    price_per_month: 224250,
     discount_percent: 25,
-    original_annual_price: 4188000,
+    original_annual_price: 3588000,
     max_barbers: 999999,
     max_bookings_per_month: 999999,
     max_home_service_per_month: 999999,
@@ -138,6 +170,25 @@ export const PLANS = {
     ],
   },
 } as const;
+
+export interface PlanDetails {
+  id: string;
+  name: string;
+  billing_cycle: 'monthly' | 'annual';
+  promo_price: number | null;
+  normal_price: number;
+  promo_duration_months: number;
+  price_per_month: number;
+  discount_percent: number;
+  original_annual_price: number | null;
+  max_barbers: number;
+  max_bookings_per_month: number;
+  max_home_service_per_month: number;
+  custom_subdomain: boolean;
+  subdomain_revisions: number;
+  can_blast_wa: boolean;
+  features: readonly string[];
+}
 
 export type PlanId = keyof typeof PLANS;
 
@@ -192,5 +243,29 @@ export function getHomeServiceLimit(planKey: string): number {
 export function getAnnualSavings(planId: string): number {
   const plan = getPlanById(planId);
   if (!plan || plan.billing_cycle !== 'annual') return 0;
-  return (plan.original_annual_price ?? 0) - plan.price;
+  return (plan.original_annual_price ?? 0) - plan.normal_price;
+}
+
+export function getPlanPrice(planId: string, paidCyclesCount: number): number {
+  const plan = getPlanById(planId);
+  if (!plan) return 0;
+  if (plan.promo_price !== null && paidCyclesCount < plan.promo_duration_months) {
+    return plan.promo_price;
+  }
+  return plan.normal_price;
+}
+
+export function isInPromo(planId: string, paidCyclesCount: number): boolean {
+  const plan = getPlanById(planId);
+  if (!plan) return false;
+  if (plan.promo_price === null) return false;
+  return paidCyclesCount < plan.promo_duration_months;
+}
+
+export function promoMonthsRemaining(planId: string, paidCyclesCount: number): number {
+  const plan = getPlanById(planId);
+  if (!plan) return 0;
+  if (plan.promo_price === null) return 0;
+  const remaining = plan.promo_duration_months - paidCyclesCount;
+  return remaining > 0 ? remaining : 0;
 }

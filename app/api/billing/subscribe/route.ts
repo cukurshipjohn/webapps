@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getUserFromToken } from '@/lib/auth';
-import { PLANS, getPlanById, isAnnualPlan } from '@/lib/billing-plans';
+import { PLANS, getPlanById, isAnnualPlan, getPlanPrice } from '@/lib/billing-plans';
 // @ts-ignore – midtrans-client tidak punya type definitions resmi
 import Midtrans from 'midtrans-client';
 
@@ -31,8 +31,30 @@ export async function POST(request: NextRequest) {
             }, { status: 400 });
         }
 
-        const plan = getPlanById(plan_id)!;
         const annual = isAnnualPlan(plan_id);
+
+        // ── PROMO PRICE LOGIC ──────────────────────────────────
+        // Hitung jumlah pembayaran settled milik tenant ini
+        const { count: rawCount } = await supabaseAdmin
+          .from('subscription_transactions')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId)
+          .in('status', ['settled', 'paid']);
+
+        const paidCycles = rawCount ?? 0;
+
+        // Tentukan harga final berdasarkan status promo
+        const plan = getPlanById(plan_id);
+        if (!plan) {
+          return NextResponse.json({ message: 'Plan tidak ditemukan.' }, { status: 400 });
+        }
+
+        const finalPrice = getPlanPrice(plan_id, paidCycles);
+        const originalPrice = plan.normal_price;
+        const discountPercent = originalPrice > finalPrice
+          ? Math.round((1 - finalPrice / originalPrice) * 100)
+          : 0;
+        // ── END PROMO PRICE LOGIC ──────────────────────────────
 
         // ─── 3. Ambil info tenant & owner ───────────────────────────────────────
         const { data: tenant, error: tenantError } = await supabaseAdmin
@@ -63,7 +85,7 @@ export async function POST(request: NextRequest) {
             item_details = [{
                 id: plan_id,
                 name: `Langganan ${plan.name} - 1 Bulan`,
-                price: plan.price,
+                price: finalPrice,
                 quantity: 1,
             }];
         } else {
@@ -72,8 +94,8 @@ export async function POST(request: NextRequest) {
             item_details = [
                 {
                     id: plan_id,
-                    name: `${plan.name} (Diskon ${plan.discount_percent}%)`,
-                    price: plan.price, // Harga harus selalu positif
+                    name: `${plan.name} (Diskon ${discountPercent}%)`,
+                    price: finalPrice, // Harga harus selalu positif
                     quantity: 1,
                 }
             ];
@@ -82,7 +104,7 @@ export async function POST(request: NextRequest) {
         const midtransParam = {
             transaction_details: {
                 order_id: orderId,
-                gross_amount: plan.price,  // total setelah diskon
+                gross_amount: finalPrice,  // total setelah diskon
             },
             item_details,
             customer_details: {
@@ -100,10 +122,10 @@ export async function POST(request: NextRequest) {
                 tenant_id: tenantId,
                 midtrans_order_id: orderId,
                 plan: plan_id,
-                amount: plan.price,
+                amount: finalPrice,
                 billing_cycle: plan.billing_cycle,
-                discount_percent: plan.discount_percent,
-                original_amount: plan.original_annual_price ?? plan.price,
+                discount_percent: discountPercent,
+                original_amount: originalPrice,
                 status: 'pending',
             });
 
@@ -115,10 +137,10 @@ export async function POST(request: NextRequest) {
             client_key: process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY,
             // Info tambahan untuk frontend (tampilkan ringkasan sebelum bayar)
             plan_name: plan.name,
-            amount: plan.price,
+            amount: finalPrice,
             billing_cycle: plan.billing_cycle,
-            discount_percent: plan.discount_percent,
-            savings: annual ? (plan.original_annual_price! - plan.price) : 0,
+            discount_percent: discountPercent,
+            savings: originalPrice > finalPrice ? (originalPrice - finalPrice) : 0,
         });
 
     } catch (error: any) {

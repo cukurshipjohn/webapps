@@ -10,7 +10,7 @@ function formatRupiah(n: number) {
 
 export default function AffiliateMarketingPage() {
   const [estimatedShops, setEstimatedShops] = useState(10);
-  const [selectedPlanPrice, setSelectedPlanPrice] = useState(199000); // Pro plan default
+  const [selectedPlanPrice, setSelectedPlanPrice] = useState(149000); // Pro plan default
 
   const monthlyCommission = Math.floor(estimatedShops * selectedPlanPrice * 0.2); // 20% recurring
   const yearlyCommission = monthlyCommission * 12;
@@ -200,8 +200,8 @@ export default function AffiliateMarketingPage() {
                 <div className="bg-black/30 p-4 rounded-xl border border-white/5">
                   <p className="text-xs text-neutral-400 mb-1">Contoh Skenario:</p>
                   <p className="text-sm text-neutral-300 leading-snug">
-                    Jika sukses mengajak <strong>10 Barbershop</strong> berlangganan paket Pro (Rp199.000)...<br/>
-                    Dapat gaji pasif: <strong className="text-amber-400">Rp 398.000 / bulan</strong> tanpa perlu kerja lagi!
+                    Jika sukses mengajak <strong>10 Barbershop</strong> berlangganan paket Pro (Rp149.000)...<br/>
+                    Dapat gaji pasif: <strong className="text-amber-400">Rp 298.000 / bulan</strong> tanpa perlu kerja lagi!
                   </p>
                 </div>
               </div>
@@ -248,9 +248,9 @@ export default function AffiliateMarketingPage() {
                     onChange={(e) => setSelectedPlanPrice(Number(e.target.value))}
                     className="w-full bg-neutral-800 border border-neutral-700 text-white font-medium rounded-xl p-4 outline-none focus:border-amber-500 transition-colors cursor-pointer"
                  >
-                   <option value={99000}>Starter (Rp 99.000 / bulan)</option>
-                   <option value={199000}>Pro (Rp 199.000 / bulan)</option>
-                   <option value={349000}>Business (Rp 349.000 / bulan)</option>
+                   <option value={79000}>Starter (Rp 79.000 / bulan)</option>
+                   <option value={149000}>Pro (Rp 149.000 / bulan)</option>
+                   <option value={299000}>Business (Rp 299.000 / bulan)</option>
                  </select>
               </div>
 

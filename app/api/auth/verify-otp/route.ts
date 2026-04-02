@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getTenantFromRequest } from '@/lib/tenant-context';
+import { trackTenantActivity } from '@/lib/activity-tracker';
 import jwt from 'jsonwebtoken';
 
 export async function POST(request: NextRequest) {
@@ -151,6 +152,16 @@ export async function POST(request: NextRequest) {
             path: '/',
             maxAge: 60 * 60 * 24 // 24 hours
         });
+
+        // Fire-and-forget: catat event owner_login jika user adalah owner dan punya tenant_id
+        // TIDAK mempengaruhi flow login — jika gagal, login tetap sukses
+        if (user.role === 'owner' && user.tenant_id) {
+            trackTenantActivity({
+                tenantId: user.tenant_id,
+                eventType: 'owner_login',
+                metadata: { login_at: new Date().toISOString() },
+            }).catch(() => {}); // silent fail
+        }
 
         return response;
     } catch (error: any) {

@@ -82,6 +82,10 @@ export async function POST(request: NextRequest) {
                     paid_at: now.toISOString(),
                     period_start: now.toISOString(),
                     period_end: periodEnd.toISOString(),
+                    // Isi original_amount hanya jika belum ada (backward compat)
+                    ...(transaction.original_amount == null && {
+                        original_amount: Math.round(Number(gross_amount))
+                    })
                 })
                 .eq('id', transaction.id);
 
@@ -219,7 +223,7 @@ export async function POST(request: NextRequest) {
             // ── 3c. Kirim WA konfirmasi ke owner (non-blocking) ────────────────────
             const shopName      = transaction.tenants?.shop_name || 'Toko Anda';
             const periodEndStr  = periodEnd.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-            const amountFormatted = `Rp ${plan.price.toLocaleString('id-ID')}`;
+            const amountFormatted = `Rp ${transaction.amount.toLocaleString('id-ID')}`;
 
             let waMessage: string;
 
@@ -233,8 +237,10 @@ export async function POST(request: NextRequest) {
                     `Terima kasih! 🙏`;
             } else {
                 // Pesan untuk paket TAHUNAN — tampilkan penghematan
-                const savedAmount   = (plan.original_annual_price! - plan.price).toLocaleString('id-ID');
-                const subdomainNote = plan.custom_subdomain
+                // transaction.original_amount menyimpan harga asli tahunan sebelum diskon
+                const originalAmount = transaction.original_amount ?? plan.original_annual_price ?? transaction.amount;
+                const savedAmount    = (originalAmount - transaction.amount).toLocaleString('id-ID');
+                const subdomainNote  = plan.custom_subdomain
                     ? `\n\n💡 *Custom Subdomain Aktif!*\nKamu bisa mengatur subdomain toko di:\nPanel Admin → Pengaturan → Subdomain`
                     : '';
 
