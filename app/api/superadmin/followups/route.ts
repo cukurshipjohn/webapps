@@ -4,8 +4,17 @@ import { getUserFromToken } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
-const VALID_CASE_TYPES = ['renewal', 'usage_check', 'churn', 'upgrade_offer', 'custom'] as const;
-const VALID_CHANNELS = ['whatsapp', 'phone', 'email', 'internal_note'] as const;
+// Sesuaikan dengan CHECK constraint di DB
+const VALID_CASE_TYPES = [
+    'renewal_reminder',
+    'usage_coaching',
+    'churn_prevention',
+    'reactivation_offer',
+    'upgrade_offer',
+    'general'
+] as const;
+
+const VALID_CHANNELS = ['whatsapp', 'phone_call', 'internal_note'] as const;
 
 export async function GET(request: NextRequest) {
     const user = getUserFromToken(request);
@@ -21,7 +30,7 @@ export async function GET(request: NextRequest) {
         const limitStr = searchParams.get('limit') || '50';
         let limit = parseInt(limitStr, 10);
         if (isNaN(limit) || limit <= 0) limit = 50;
-        if (limit > 100) limit = 100;
+        if (limit > 200) limit = 200;
 
         let query = supabaseAdmin
             .from('superadmin_followups')
@@ -43,7 +52,7 @@ export async function GET(request: NextRequest) {
             slug: (f.tenants as any)?.slug,
             case_type: f.case_type,
             channel: f.channel,
-            note: f.note,
+            message_sent: f.message_sent,   // kolom aktual di DB
             outcome: f.outcome,
             scheduled_at: f.scheduled_at,
             done_at: f.done_at,
@@ -65,14 +74,14 @@ export async function POST(request: NextRequest) {
 
     try {
         const body = await request.json();
-        const { tenant_id, case_type, channel, note, outcome, scheduled_at } = body;
+        const { tenant_id, case_type, channel, message_sent, outcome, scheduled_at } = body;
 
         if (!tenant_id) return NextResponse.json({ message: 'tenant_id wajib diisi' }, { status: 400 });
         if (!case_type || !VALID_CASE_TYPES.includes(case_type as any)) {
-            return NextResponse.json({ message: 'case_type tidak valid' }, { status: 400 });
+            return NextResponse.json({ message: `case_type tidak valid. Gunakan: ${VALID_CASE_TYPES.join(', ')}` }, { status: 400 });
         }
         if (!channel || !VALID_CHANNELS.includes(channel as any)) {
-            return NextResponse.json({ message: 'channel tidak valid' }, { status: 400 });
+            return NextResponse.json({ message: `channel tidak valid. Gunakan: ${VALID_CHANNELS.join(', ')}` }, { status: 400 });
         }
 
         const { data: tenantCheck, error: tcErr } = await supabaseAdmin
@@ -93,7 +102,7 @@ export async function POST(request: NextRequest) {
             admin_id,
             case_type,
             channel,
-            note: note || '',
+            message_sent: message_sent || null,   // kolom aktual di DB (nullable)
             outcome: finalOutcome
         };
 

@@ -34,42 +34,40 @@ export async function GET(request: NextRequest) {
 
         // LANGKAH 2 — Untuk setiap tenant
         for (const tenant of expiringTenants || []) {
-            // Cek duplikat follow-up renewal pending
+            // Cek duplikat follow-up renewal_reminder pending dalam 3 hari terakhir
             const { data: existingFollowup, error: existErr } = await supabaseAdmin
                 .from('superadmin_followups')
                 .select('id')
                 .eq('tenant_id', tenant.id)
-                .eq('case_type', 'renewal')
+                .eq('case_type', 'renewal_reminder')   // case_type yang benar di DB
                 .eq('outcome', 'pending')
                 .gt('created_at', threeDaysAgo)
                 .single();
 
-            // Jika error adalah PGRST116 (0 row), artinya blm ada = TIDAK duplikat
+            // PGRST116 = 0 row = belum ada = tidak duplikat
             if (existErr && existErr.code !== 'PGRST116') {
                 console.error('[HealthCheck] Error checking duplicates:', existErr);
                 continue;
             }
 
             if (existingFollowup) {
-                // Duplikat ketemu
                 skipped++;
                 continue;
             }
 
-            // Hitung sisa hari
             const expiresAtDate = new Date(tenant.plan_expires_at);
             const remainingDays = Math.ceil((expiresAtDate.getTime() - now.getTime()) / 86400000);
-            
-            // Insert baru (admin_id = null untuk cron worker)
+
+            // Insert — gunakan kolom yang benar: message_sent (bukan note)
             const { error: insertErr } = await supabaseAdmin
                 .from('superadmin_followups')
                 .insert({
                     tenant_id: tenant.id,
                     admin_id: null,
-                    case_type: 'renewal',
+                    case_type: 'renewal_reminder',          // case_type valid di DB
                     channel: 'whatsapp',
                     outcome: 'pending',
-                    note: `Auto: Langganan ${tenant.shop_name} habis dalam ${remainingDays} hari (${expiresAtDate.toLocaleDateString('id-ID')})`,
+                    message_sent: `Auto: Langganan ${tenant.shop_name} habis dalam ${remainingDays} hari (${expiresAtDate.toLocaleDateString('id-ID')})`,
                     scheduled_at: now.toISOString()
                 });
 
@@ -80,7 +78,6 @@ export async function GET(request: NextRequest) {
             }
         }
 
-        // LANGKAH 3 — Return summary
         return NextResponse.json({
             success: true,
             scanned,

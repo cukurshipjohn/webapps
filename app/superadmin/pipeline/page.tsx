@@ -33,16 +33,17 @@ export default function PipelinePage() {
     const [toast, setToast] = useState<{ msg: string, isError?: boolean } | null>(null);
 
     // Modal Send WA State
-    const [waCaseType, setWaCaseType] = useState('renewal');
+    const [waCaseType, setWaCaseType] = useState('renewal_reminder');
     const [waCustomNote, setWaCustomNote] = useState('');
     const [waLoading, setWaLoading] = useState(false);
 
     // Modal Add Note State
-    const [noteCaseType, setNoteCaseType] = useState('renewal');
+    const [noteCaseType, setNoteCaseType] = useState('renewal_reminder');
     const [noteChannel, setNoteChannel] = useState('internal_note');
     const [noteContent, setNoteContent] = useState('');
     const [noteScheduledAt, setNoteScheduledAt] = useState('');
     const [noteChurnReason, setNoteChurnReason] = useState('too_expensive');
+    const [noteWinBack, setNoteWinBack] = useState('unknown');
     const [noteLoading, setNoteLoading] = useState(false);
 
     // Modal Detail State
@@ -118,14 +119,15 @@ export default function PipelinePage() {
 
         setNoteLoading(true);
         try {
-            if (noteCaseType === 'churn') {
+            if (noteCaseType === 'churn_prevention') {
                 const res = await fetch('/api/superadmin/churn-surveys', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                     body: JSON.stringify({
                         tenant_id: selectedTenant.id,
                         reason: noteChurnReason,
-                        detail_note: noteContent
+                        detail_note: noteContent,
+                        win_back_potential: noteWinBack
                     })
                 });
                 const data = await res.json();
@@ -135,7 +137,7 @@ export default function PipelinePage() {
                     tenant_id: selectedTenant.id,
                     case_type: noteCaseType,
                     channel: noteChannel,
-                    note: noteContent
+                    message_sent: noteContent   // kolom aktual di DB
                 };
                 if (noteScheduledAt) payload.scheduled_at = new Date(noteScheduledAt).toISOString();
 
@@ -181,15 +183,16 @@ export default function PipelinePage() {
         setModalMode(mode);
         if (mode === 'detail') loadDetailFollowups(tenant.id);
         if (mode === 'send-wa') {
-            setWaCaseType('renewal');
+            setWaCaseType('renewal_reminder');
             setWaCustomNote('');
         }
         if (mode === 'add-note') {
-            setNoteCaseType('renewal');
+            setNoteCaseType('renewal_reminder');
             setNoteChannel('internal_note');
             setNoteContent('');
             setNoteScheduledAt('');
             setNoteChurnReason('too_expensive');
+            setNoteWinBack('unknown');
         }
     };
 
@@ -342,25 +345,29 @@ export default function PipelinePage() {
                                 <div>
                                     <label className="text-xs text-neutral-400 mb-1 block">Jenis Follow-up</label>
                                     <select value={waCaseType} onChange={e => setWaCaseType(e.target.value)} className="w-full bg-neutral-800 text-white px-3 py-2 rounded-lg border border-neutral-700 outline-none">
-                                        <option value="renewal">Pengingat Perpanjangan</option>
-                                        <option value="usage_check">Cek Penggunaan Aplikasi</option>
+                                        <option value="renewal_reminder">Pengingat Perpanjangan</option>
+                                        <option value="usage_coaching">Cek Penggunaan Aplikasi</option>
+                                        <option value="churn_prevention">Pencegahan Churn</option>
+                                        <option value="reactivation_offer">Penawaran Reaktivasi</option>
                                         <option value="upgrade_offer">Penawaran Upgrade</option>
-                                        <option value="custom">Pesan Kustom</option>
+                                        <option value="general">Pesan Kustom</option>
                                     </select>
                                 </div>
 
-                                {waCaseType === 'custom' ? (
+                                {waCaseType === 'general' ? (
                                     <div>
-                                        <label className="text-xs text-neutral-400 mb-1 block">Tulis Pesan (Custom)</label>
-                                        <textarea value={waCustomNote} onChange={e => setWaCustomNote(e.target.value)} rows={4} className="w-full bg-neutral-800 text-white px-3 py-2 rounded-lg border border-neutral-700 outline-none"></textarea>
+                                        <label className="text-xs text-neutral-400 mb-1 block">Tulis Pesan Kustom</label>
+                                        <textarea value={waCustomNote} onChange={e => setWaCustomNote(e.target.value)} rows={4} className="w-full bg-neutral-800 text-white px-3 py-2 rounded-lg border border-neutral-700 outline-none" placeholder="Tulis pesan yang akan dikirimkan..."></textarea>
                                     </div>
                                 ) : (
                                     <div>
                                         <label className="text-xs text-neutral-400 mb-1 block">Preview Pesan Template</label>
                                         <div className="w-full bg-neutral-800 text-neutral-400 px-3 py-2 rounded-lg border border-neutral-700 whitespace-pre-wrap text-sm italic">
-                                            {waCaseType === 'renewal' ? `Halo kak ${selectedTenant?.shop_name} 👋\nLangganan CukurShip Anda akan berakhir dalam ${selectedTenant?.days_until_expiry} hari...\nhttps://cukurship.id/admin/billing` : 
-                                             waCaseType === 'usage_check' ? `Halo kak ${selectedTenant?.shop_name} 👋\nKami perhatikan aktivitas toko Anda belum maksimal...\nAda yang bisa kami bantu?` :
-                                             `Halo kak ${selectedTenant?.shop_name} 👋\nAnda bisa upgrade ke paket lebih tinggi...`}
+                                            {waCaseType === 'renewal_reminder' ? `Halo kak ${selectedTenant?.shop_name} 👋\nLangganan CukurShip Anda akan berakhir dalam ${selectedTenant?.days_until_expiry} hari.\nPerpanjang sekarang: https://cukurship.id/admin/billing` :
+                                             waCaseType === 'usage_coaching' ? `Halo kak ${selectedTenant?.shop_name} 👋\nKami perhatikan aktivitas toko Anda belum maksimal.\nAda yang bisa kami bantu? Balas pesan ini 🙏` :
+                                             waCaseType === 'churn_prevention' ? `Halo kak ${selectedTenant?.shop_name} 👋\nKami lihat langganan Anda akan segera berakhir. Yuk, kami bantu 😊` :
+                                             waCaseType === 'reactivation_offer' ? `Halo kak ${selectedTenant?.shop_name} 👋\nKami rindu! Ada penawaran khusus reaktivasi untuk Anda.` :
+                                             `Halo kak ${selectedTenant?.shop_name} 👋\nAnda bisa upgrade ke paket lebih tinggi dan dapatkan fitur tambahan.`}
                                         </div>
                                     </div>
                                 )}
@@ -382,11 +389,12 @@ export default function PipelinePage() {
                                     <div className="flex-1">
                                         <label className="text-xs text-neutral-400 mb-1 block">Jenis Kasus</label>
                                         <select value={noteCaseType} onChange={e => setNoteCaseType(e.target.value)} className="w-full bg-neutral-800 text-white px-3 py-2 rounded-lg border border-neutral-700 outline-none hover:border-neutral-600 focus:border-cyan-500 transition-colors">
-                                            <option value="renewal">Perpanjangan</option>
-                                            <option value="usage_check">Cek Penggunaan</option>
-                                            <option value="churn">Berhenti Berlangganan (Churn)</option>
+                                            <option value="renewal_reminder">Pengingat Perpanjangan</option>
+                                            <option value="usage_coaching">Cek Penggunaan</option>
+                                            <option value="churn_prevention">Berhenti Berlangganan (Churn)</option>
+                                            <option value="reactivation_offer">Penawaran Reaktivasi</option>
                                             <option value="upgrade_offer">Penawaran Upgrade</option>
-                                            <option value="custom">Lainnya</option>
+                                            <option value="general">Lainnya</option>
                                         </select>
                                     </div>
                                     <div className="flex-1">
@@ -394,22 +402,34 @@ export default function PipelinePage() {
                                         <select value={noteChannel} onChange={e => setNoteChannel(e.target.value)} className="w-full bg-neutral-800 text-white px-3 py-2 rounded-lg border border-neutral-700 outline-none hover:border-neutral-600 focus:border-cyan-500 transition-colors">
                                             <option value="internal_note">Catatan Internal</option>
                                             <option value="whatsapp">WhatsApp</option>
-                                            <option value="phone">Telepon</option>
-                                            <option value="email">Email</option>
+                                            <option value="phone_call">Telepon</option>
                                         </select>
                                     </div>
                                 </div>
 
-                                {noteCaseType === 'churn' && (
-                                    <div>
-                                        <label className="text-xs text-neutral-400 mb-1 block">Alasan Berhenti</label>
-                                        <select value={noteChurnReason} onChange={e => setNoteChurnReason(e.target.value)} className="w-full bg-neutral-800 text-white px-3 py-2 rounded-lg border border-neutral-700 outline-none hover:border-neutral-600 focus:border-cyan-500 transition-colors">
-                                            <option value="too_expensive">Terlalu Mahal</option>
-                                            <option value="not_using">Jarang Digunakan</option>
-                                            <option value="switched_competitor">Pindah Kompetitor</option>
-                                            <option value="temporary_close">Tutup Sementara</option>
-                                            <option value="other">Lainnya</option>
-                                        </select>
+                                {noteCaseType === 'churn_prevention' && (
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="text-xs text-neutral-400 mb-1 block">Alasan Berhenti</label>
+                                            <select value={noteChurnReason} onChange={e => setNoteChurnReason(e.target.value)} className="w-full bg-neutral-800 text-white px-3 py-2 rounded-lg border border-neutral-700 outline-none hover:border-neutral-600 focus:border-cyan-500 transition-colors">
+                                                <option value="too_expensive">Terlalu Mahal</option>
+                                                <option value="not_using_features">Jarang Digunakan</option>
+                                                <option value="switched_competitor">Pindah Kompetitor</option>
+                                                <option value="temporary_close">Tutup Sementara</option>
+                                                <option value="technical_issues">Masalah Teknis</option>
+                                                <option value="no_customers">Sepi Pelanggan</option>
+                                                <option value="other">Lainnya</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs text-neutral-400 mb-1 block">Potensi Win-back</label>
+                                            <select value={noteWinBack} onChange={e => setNoteWinBack(e.target.value)} className="w-full bg-neutral-800 text-white px-3 py-2 rounded-lg border border-neutral-700 outline-none hover:border-neutral-600 focus:border-cyan-500 transition-colors">
+                                                <option value="high">Tinggi — Kemungkinan besar kembali</option>
+                                                <option value="medium">Sedang — Ada peluang</option>
+                                                <option value="low">Rendah — Kemungkinan kecil</option>
+                                                <option value="unknown">Belum dianalisis</option>
+                                            </select>
+                                        </div>
                                     </div>
                                 )}
 
@@ -459,7 +479,7 @@ export default function PipelinePage() {
                                                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-700 text-neutral-300 uppercase">{df.outcome}</span>
                                                     </div>
                                                     <div className="text-xs text-neutral-300 font-medium mb-1 capitalize border border-neutral-600 inline-block px-1 rounded">{df.case_type.replace('_', ' ')}</div>
-                                                    <p className="text-sm text-neutral-200 line-clamp-2 leading-relaxed">{df.note}</p>
+                                                    <p className="text-sm text-neutral-200 line-clamp-2 leading-relaxed">{df.message_sent}</p>
                                                 </div>
                                             ))}
                                         </div>

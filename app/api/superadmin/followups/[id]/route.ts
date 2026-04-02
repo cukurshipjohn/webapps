@@ -4,17 +4,20 @@ import { getUserFromToken } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
+// Sesuaikan dengan CHECK constraint di DB
 const VALID_OUTCOMES = [
+    'pending',
     'no_response',
     'interested',
     'renewed',
+    'upgraded',
     'churned_confirmed',
-    'pending'
+    'not_applicable'
 ] as const;
 
 export async function PATCH(
     request: NextRequest,
-    context: { params: Promise<{ id: string }> } // Next.js 15+ convention for dynamic route params
+    context: { params: Promise<{ id: string }> }
 ) {
     const user = getUserFromToken(request);
     if (!user || user.role !== 'superadmin') {
@@ -26,22 +29,22 @@ export async function PATCH(
         if (!id) return NextResponse.json({ message: 'ID required' }, { status: 400 });
 
         const body = await request.json();
-        const { outcome, note, done_at } = body;
+        const { outcome, message_sent, done_at } = body;
 
         let payload: any = {};
 
         if (outcome !== undefined) {
-             if (!VALID_OUTCOMES.includes(outcome as any)) {
-                 return NextResponse.json({ message: 'outcome tidak valid' }, { status: 400 });
-             }
-             payload.outcome = outcome;
+            if (!VALID_OUTCOMES.includes(outcome as any)) {
+                return NextResponse.json({ message: `outcome tidak valid. Gunakan: ${VALID_OUTCOMES.join(', ')}` }, { status: 400 });
+            }
+            payload.outcome = outcome;
 
-             if (outcome !== 'pending' && done_at === undefined) {
-                 payload.done_at = new Date().toISOString();
-             }
+            if (outcome !== 'pending' && done_at === undefined) {
+                payload.done_at = new Date().toISOString();
+            }
         }
 
-        if (note !== undefined) payload.note = note;
+        if (message_sent !== undefined) payload.message_sent = message_sent;
         if (done_at !== undefined) payload.done_at = done_at;
 
         if (Object.keys(payload).length === 0) {
@@ -57,7 +60,7 @@ export async function PATCH(
 
         if (error) {
             if (error.code === 'PGRST116') {
-                 return NextResponse.json({ message: 'Follow-up tidak ditemukan' }, { status: 404 });
+                return NextResponse.json({ message: 'Follow-up tidak ditemukan' }, { status: 404 });
             }
             throw error;
         }

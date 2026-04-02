@@ -151,11 +151,12 @@ function FollowupsContent() {
                 
                 <select value={filterCaseType} onChange={e => setFilterCaseType(e.target.value)} className="flex-1 bg-neutral-900 text-white px-3 py-2 border border-neutral-700 rounded-lg text-sm focus:border-cyan-500 outline-none">
                     <option value="all">Semua Jenis Kasus</option>
-                    <option value="renewal">Perpanjangan</option>
-                    <option value="usage_check">Cek Penggunaan</option>
-                    <option value="churn">Churn</option>
+                    <option value="renewal_reminder">Pengingat Perpanjangan</option>
+                    <option value="usage_coaching">Cek Penggunaan</option>
+                    <option value="churn_prevention">Pencegahan Churn</option>
+                    <option value="reactivation_offer">Penawaran Reaktivasi</option>
                     <option value="upgrade_offer">Penawaran Upgrade</option>
-                    <option value="custom">Lainnya</option>
+                    <option value="general">Lainnya</option>
                 </select>
 
                 <select value={filterOutcome} onChange={e => setFilterOutcome(e.target.value)} className="flex-1 bg-neutral-900 text-white px-3 py-2 border border-neutral-700 rounded-lg text-sm focus:border-cyan-500 outline-none">
@@ -212,24 +213,24 @@ function FollowupsContent() {
                                     </td>
                                     <td className="px-4 py-3">
                                         <span className={`px-2 py-1 text-[10px] font-bold uppercase rounded border ${
-                                            f.case_type === 'renewal' ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' :
-                                            f.case_type === 'usage_check' ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' :
-                                            f.case_type === 'churn' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
+                                            f.case_type === 'renewal_reminder' ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' :
+                                            f.case_type === 'usage_coaching' ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' :
+                                            f.case_type === 'churn_prevention' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
+                                            f.case_type === 'reactivation_offer' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
                                             f.case_type === 'upgrade_offer' ? 'bg-green-500/10 border-green-500/20 text-green-400' :
                                             'bg-neutral-500/10 border-neutral-500/20 text-neutral-400'
                                         }`}>
-                                            {f.case_type.replace('_', ' ')}
+                                            {f.case_type.replace(/_/g, ' ')}
                                         </span>
                                     </td>
                                     <td className="px-4 py-3 whitespace-nowrap">
                                         {f.channel === 'whatsapp' ? '📱 WhatsApp' : 
-                                         f.channel === 'phone' ? '📞 Telepon' : 
-                                         f.channel === 'email' ? '📧 Email' : 
-                                         '📋 Catatan'}
+                                         f.channel === 'phone_call' ? '📞 Telepon' : 
+                                         '📋 Catatan Internal'}
                                     </td>
                                     <td className="px-4 py-3 max-w-[200px]">
-                                        <div title={f.note || ''} className="truncate text-neutral-400 cursor-help">
-                                            {f.note || <span className="italic text-neutral-600">Kosong</span>}
+                                        <div title={f.message_sent || ''} className="truncate text-neutral-400 cursor-help">
+                                            {f.message_sent || <span className="italic text-neutral-600">Kosong</span>}
                                         </div>
                                     </td>
                                     <td className="px-4 py-3 whitespace-nowrap text-neutral-400">

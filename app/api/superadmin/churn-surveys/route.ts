@@ -4,11 +4,14 @@ import { getUserFromToken } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
+// Sesuaikan dengan CHECK constraint di DB (tabel churn_surveys)
 const VALID_REASONS = [
     'too_expensive',
-    'not_using',
+    'not_using_features',    // di DB: not_using_features (bukan not_using)
     'switched_competitor',
     'temporary_close',
+    'technical_issues',
+    'no_customers',
     'other'
 ] as const;
 
@@ -49,36 +52,37 @@ export async function POST(request: NextRequest) {
 
     try {
         const body = await request.json();
-        const { tenant_id, reason, detail_note } = body;
+        const { tenant_id, reason, detail_note, win_back_potential } = body;
 
         if (!tenant_id) return NextResponse.json({ message: 'tenant_id wajib diisi' }, { status: 400 });
         if (!reason || !VALID_REASONS.includes(reason as any)) {
-            return NextResponse.json({ message: 'reason tidak valid' }, { status: 400 });
+            return NextResponse.json({ message: `reason tidak valid. Gunakan: ${VALID_REASONS.join(', ')}` }, { status: 400 });
         }
 
-        // Insert churn survey
+        // Insert churn survey — gunakan recorded_by_admin_id (bukan recorded_by)
         const { data: survey, error: surveyErr } = await supabaseAdmin
             .from('churn_surveys')
             .insert({
                 tenant_id,
                 reason,
                 detail_note: detail_note || null,
-                recorded_by: 'superadmin'
+                recorded_by_admin_id: user.userId,    // kolom aktual di DB
+                win_back_potential: win_back_potential || 'unknown'
             })
             .select('*')
             .single();
 
         if (surveyErr) throw surveyErr;
 
-        // Auto insert into superadmin_followups
+        // Auto insert ke superadmin_followups — gunakan case_type & field yang benar
         const { error: followupErr } = await supabaseAdmin
             .from('superadmin_followups')
             .insert({
                 tenant_id,
                 admin_id: user.userId,
-                case_type: 'churn',
+                case_type: 'churn_prevention',         // case_type yang valid di DB
                 channel: 'internal_note',
-                note: `Alasan churn: ${reason}. ${detail_note || ''}`,
+                message_sent: `Alasan churn: ${reason}. ${detail_note || ''}`,   // kolom aktual
                 outcome: 'churned_confirmed'
             });
 
@@ -86,7 +90,7 @@ export async function POST(request: NextRequest) {
             console.warn('[ChurnSurveys POST] Failed to auto-insert followup:', followupErr);
         }
 
-        // Matikan tenant
+        // Nonaktifkan tenant
         const { error: deactErr } = await supabaseAdmin
             .from('tenants')
             .update({ is_active: false })
