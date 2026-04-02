@@ -151,7 +151,14 @@ export default function SuperadminOverview() {
                                     <tr key={t.id} className="border-b border-neutral-800/30 hover:bg-neutral-800/20 transition-colors">
                                         <td className="px-6 py-3">
                                             <p className="text-white font-medium">{t.shop_name}</p>
-                                            <p className="text-neutral-500 text-xs font-mono">{(t.effective_slug || t.slug)}.{APP_DOMAIN}</p>
+                                            <a
+                                                href={`https://${t.effective_slug || t.slug}.${APP_DOMAIN}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-neutral-500 text-xs font-mono hover:text-amber-400 transition-colors"
+                                            >
+                                                {(t.effective_slug || t.slug)}.{APP_DOMAIN} ↗
+                                            </a>
                                         </td>
                                         <td className="px-6 py-3">
                                             <PlanBadge plan={t.plan} isActive={t.is_active} expiresAt={t.plan_expires_at} />
@@ -216,7 +223,14 @@ export default function SuperadminOverview() {
                             <div key={t.id} className="flex items-center justify-between px-6 py-4 hover:bg-neutral-800/20 transition-colors gap-4 flex-wrap">
                                 <div className="flex-1 min-w-0">
                                     <p className="text-white font-semibold">{t.shop_name}</p>
-                                    <p className="text-amber-400/70 text-xs font-mono">{(t.effective_slug || t.slug)}.{APP_DOMAIN}</p>
+                                    <a
+                                        href={`https://${t.effective_slug || t.slug}.${APP_DOMAIN}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-amber-400/70 text-xs font-mono hover:text-amber-400 transition-colors"
+                                    >
+                                        {(t.effective_slug || t.slug)}.{APP_DOMAIN} ↗
+                                    </a>
                                 </div>
                                 <div className="flex items-center gap-2 flex-shrink-0">
                                     <PlanBadge plan={t.plan} isActive={t.is_active} expiresAt={t.plan_expires_at} />
@@ -259,7 +273,16 @@ export default function SuperadminOverview() {
                         {newestTenants.map((t: any) => (
                             <tr key={t.id} className="border-b border-neutral-800/30 hover:bg-neutral-800/20 transition-colors">
                                 <td className="px-6 py-3 text-white font-medium">{t.shop_name}</td>
-                                <td className="px-6 py-3 font-mono text-xs text-cyan-400/70">{(t.effective_slug || t.slug)}.{APP_DOMAIN}</td>
+                                <td className="px-6 py-3 text-xs">
+                                    <a
+                                        href={`https://${t.effective_slug || t.slug}.${APP_DOMAIN}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="font-mono text-cyan-400/70 hover:text-cyan-400 transition-colors"
+                                    >
+                                        {(t.effective_slug || t.slug)}.{APP_DOMAIN} ↗
+                                    </a>
+                                </td>
                                 <td className="px-6 py-3">
                                     <PlanBadge plan={t.plan} isActive={t.is_active} expiresAt={t.plan_expires_at} />
                                 </td>

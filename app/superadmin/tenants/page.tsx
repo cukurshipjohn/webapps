@@ -234,7 +234,7 @@ export default function SuperadminTenants() {
                                                     <span className="text-amber-400">🎯</span>
                                                     <a href={`https://${t.custom_slug}.${APP_DOMAIN}`} target="_blank" rel="noopener"
                                                         className="font-mono text-amber-400 hover:text-amber-300 transition-colors">
-                                                        {t.custom_slug}.{APP_DOMAIN} ↗
+                                                        https://{t.custom_slug}.{APP_DOMAIN} ↗
                                                     </a>
                                                 </div>
                                                 <p className="text-neutral-600 font-mono mt-0.5 pl-4">
@@ -244,7 +244,7 @@ export default function SuperadminTenants() {
                                         ) : (
                                             <a href={`https://${t.effective_slug || t.slug}.${APP_DOMAIN}`} target="_blank" rel="noopener"
                                                 className="font-mono text-cyan-400/70 hover:text-cyan-400 transition-colors">
-                                                {(t.effective_slug || t.slug)}.{APP_DOMAIN} ↗
+                                                https://{(t.effective_slug || t.slug)}.{APP_DOMAIN} ↗
                                             </a>
                                         )}
                                     </td>
