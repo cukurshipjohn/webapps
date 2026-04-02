@@ -26,7 +26,7 @@
     },
     {
       "path": "/api/cron/tenant-health-check",
-      "schedule": "0 17 * * *"
+      "schedule": "0 1 * * *"
     }
   ]
 }
