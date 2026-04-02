@@ -7,8 +7,8 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 // Subdomain yang dikecualikan dari tenant check
 const EXCLUDED_SUBDOMAINS = new Set(['www', 'app', 'api', 'mail', 'smtp']);
 
-// Root domain kita — baca dari env agar mudah ganti domain
-const ROOT_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || 'cukurship.id';
+// Root domain kita — baca dari env agar mudah ganti domain (strip protokol jika ada)
+const ROOT_DOMAIN = (process.env.NEXT_PUBLIC_APP_DOMAIN || 'cukurship.id').replace(/^https?:\/\//, "");
 
 /**
  * Ambil slug tenant dari hostname request.
@@ -59,7 +59,7 @@ async function getTenantBySlug(slug: string) {
     return data?.[0] ?? null;
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
     // ─── BRANCH 1: ADMIN & SUPERADMIN AUTH ───────────────────────────────────
