@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function ShopNotFound() {
     const isDev = process.env.NODE_ENV === "development";
-    const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id";
+    const appDomain = (process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id").replace(/^https?:\/\//, "");
     const rootUrl = isDev ? "http://localhost:3000" : `https://${appDomain}`;
 
     return (

@@ -14,7 +14,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [shopLogo, setShopLogo] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id";
+  // Strip protokol jika env var diset dengan https:// (misal di Vercel)
+  const appDomain = (process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id").replace(/^https?:\/\//, "");
 
   const ADMIN_ROLES = ['owner', 'superadmin', 'barber'];
 

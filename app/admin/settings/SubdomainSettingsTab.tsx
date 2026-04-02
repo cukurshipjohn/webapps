@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { canCustomSubdomain } from "@/lib/billing-plans";
 
-const APP_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id";
+const APP_DOMAIN = (process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id").replace(/^https?:\/\//, "");
 
 interface SubdomainData {
     original_slug: string;

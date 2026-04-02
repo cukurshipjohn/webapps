@@ -20,7 +20,7 @@ interface SlugStatus {
   message: string;
 }
 
-const ROOT_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id";
+const ROOT_DOMAIN = (process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id").replace(/^https?:\/\//, "");
 
 function slugify(text: string): string {
   return text

@@ -8,7 +8,8 @@ function formatRupiah(n: number) {
     return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(n);
 }
 
-const APP_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id";
+// Strip protokol jika env var diset dengan https:// (misal di Vercel)
+const APP_DOMAIN = (process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id").replace(/^https?:\/\//, "");
 
 function StatCard({ label, value, icon, sub, color = "cyan" }: {
     label: string; value: string | number; icon: string; sub?: string; color?: string;

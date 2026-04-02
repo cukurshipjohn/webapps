@@ -22,7 +22,8 @@ function PlanBadge({ plan, isActive, expiresAt, isInPromo }: { plan: string; isA
 
 // Filter jenis siklus
 type CycleFilter = "" | "annual" | "monthly" | "custom";
-const APP_DOMAIN = process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id";
+// Strip protokol jika env var diset dengan https:// (misal di Vercel)
+const APP_DOMAIN = (process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id").replace(/^https?:\/\//, "");
 
 export default function SuperadminTenants() {
     const router = useRouter();
@@ -234,7 +235,7 @@ export default function SuperadminTenants() {
                                                     <span className="text-amber-400">🎯</span>
                                                     <a href={`https://${t.custom_slug}.${APP_DOMAIN}`} target="_blank" rel="noopener"
                                                         className="font-mono text-amber-400 hover:text-amber-300 transition-colors">
-                                                        https://{t.custom_slug}.{APP_DOMAIN} ↗
+                                                        {t.custom_slug}.{APP_DOMAIN} ↗
                                                     </a>
                                                 </div>
                                                 <p className="text-neutral-600 font-mono mt-0.5 pl-4">
@@ -244,7 +245,7 @@ export default function SuperadminTenants() {
                                         ) : (
                                             <a href={`https://${t.effective_slug || t.slug}.${APP_DOMAIN}`} target="_blank" rel="noopener"
                                                 className="font-mono text-cyan-400/70 hover:text-cyan-400 transition-colors">
-                                                https://{(t.effective_slug || t.slug)}.{APP_DOMAIN} ↗
+                                                {(t.effective_slug || t.slug)}.{APP_DOMAIN} ↗
                                             </a>
                                         )}
                                     </td>

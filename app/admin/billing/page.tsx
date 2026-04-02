@@ -186,7 +186,7 @@ function BillingPageInner() {
 
     const currentPlanId = billingData?.plan || "starter";
     const progress = calcProgress(billingData?.plan_expires_at ?? null, billingData?.is_annual ?? false);
-    const appDomain = process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id";
+    const appDomain = (process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id").replace(/^https?:\/\//, "");
     const shopUrl = `https://${billingData?.effective_slug}.${appDomain}`;
 
     // Status badge warna untuk plan saat ini
