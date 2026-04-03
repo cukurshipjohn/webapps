@@ -15,6 +15,7 @@ export default function AdminLoginContent() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false); // [Fix 4] anti double-submit flag
   const [successMsg, setSuccessMsg] = useState("");
 
   // Tampilkan pesan error dari middleware (access_denied / session_expired)
@@ -32,6 +33,7 @@ export default function AdminLoginContent() {
     setLoading(true);
     setError("");
     setSuccessMsg("");
+    setSubmitted(false); // reset submitted state saat request OTP baru
 
     try {
       const res = await fetch("/api/auth/request-otp", {
@@ -43,7 +45,7 @@ export default function AdminLoginContent() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
 
-      setSuccessMsg("Kode Admin OTP telah dikirim.");
+      setSuccessMsg("Kode Admin OTP telah dikirim ke WhatsApp Anda.");
       setStep("otp");
     } catch (err: any) {
       setError(err.message || "Gagal mengirim OTP Admin.");
@@ -52,32 +54,71 @@ export default function AdminLoginContent() {
     }
   };
 
-  const handleVerifyOTP = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // [Fix 5] Handler kirim ulang OTP tanpa perlu ganti nomor
+  const handleResendOTP = async () => {
     setLoading(true);
     setError("");
+    setSuccessMsg("");
+    setOtpCode("");
+    setSubmitted(false);
+    try {
+      const res = await fetch("/api/auth/request-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phoneNumber, isAdminLogin: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      setSuccessMsg("OTP baru telah dikirim. Masukkan kode dari WhatsApp terbaru.");
+    } catch (err: any) {
+      setError(err.message || "Gagal mengirim ulang OTP.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOTP = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // [Fix 4] Cegah double-submit: jika sudah pernah submit, tolak request kedua
+    if (submitted || loading) return;
+
+    setSubmitted(true); // tandai sudah submit — tidak bisa submit lagi
+    setLoading(true);
+    setError("");
+
+    // [Fix 4] AbortController untuk timeout 15 detik
+    // Jika server tidak merespons dalam 15 detik → tampilkan pesan jelas ke user
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phoneNumber, otpCode }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
       const data = await res.json();
 
       // Selalu tampilkan error dari API jika response tidak OK
       if (!res.ok) {
-        throw new Error(data.message || `Verifikasi gagal (${res.status}). Coba minta OTP baru.`);
+        // [Fix 4] Jika 401 (OTP salah/expired), reset submitted agar user bisa kirim ulang OTP
+        setSubmitted(false);
+        throw new Error(data.message || `Verifikasi gagal (${res.status}). Minta OTP baru.`);
       }
 
       // Guard: pastikan data.user ada (unexpected server response)
       if (!data.user || !data.user.role) {
+        setSubmitted(false);
         throw new Error("Respons server tidak valid. Coba lagi atau hubungi admin.");
       }
 
       // Pastikan yang login BUKAN customer biasa
       if (data.user.role === 'customer') {
+        setSubmitted(false);
         throw new Error("Akses Ditolak: Halaman ini khusus untuk Staff/Admin.");
       }
 
@@ -86,12 +127,20 @@ export default function AdminLoginContent() {
       router.push(redirectParams || "/admin");
       
     } catch (err: any) {
+      clearTimeout(timeoutId);
       console.error("[AdminLogin] Verify OTP failed:", err);
-      const message = err.message || "Kode OTP tidak valid. Coba lagi.";
-      setError(message);
-      if (message.includes('Akses Ditolak')) {
-        setStep("phone");
-        setOtpCode("");
+      
+      // [Fix 4] Deteksi timeout (AbortError) — tampilkan pesan yang jelas
+      if (err.name === 'AbortError') {
+        setError("Koneksi timeout (15 detik). OTP Anda mungkin sudah diproses — coba klik 'Kirim Ulang OTP' untuk mendapatkan kode baru.");
+        setSubmitted(false);
+      } else {
+        const message = err.message || "Kode OTP tidak valid. Coba lagi.";
+        setError(message);
+        if (message.includes('Akses Ditolak')) {
+          setStep("phone");
+          setOtpCode("");
+        }
       }
     } finally {
       setLoading(false);
@@ -185,20 +234,35 @@ export default function AdminLoginContent() {
                 placeholder="••••••"
                 className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-4 text-red-500 text-center text-4xl tracking-[1rem] placeholder:text-neutral-800 focus:outline-none focus:border-red-500 transition-all font-mono font-bold"
                 required
+                disabled={submitted && !error} // [Fix 4] disable input setelah submit berhasil
               />
+              <p className="text-xs text-neutral-500 text-center">Kode berlaku 10 menit · Periksa WhatsApp Anda</p>
             </div>
 
+            {/* [Fix 4] Tombol submit — disabled jika loading ATAU sudah submit tanpa error */}
             <button
               type="submit"
-              disabled={loading || otpCode.length < 6}
+              disabled={loading || otpCode.length < 6 || (submitted && !error)}
               className="w-full py-4 bg-white hover:bg-neutral-200 text-neutral-950 font-extrabold rounded-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? "Menyinkronkan..." : "Masuk ke Dashboard"}
+              {loading ? "Memverifikasi..." : submitted && !error ? "✅ Terverifikasi" : "Masuk ke Dashboard"}
             </button>
+
+            {/* [Fix 5] Tombol kirim ulang OTP — tampil saat ada error atau setelah submit */}
+            {(error || submitted) && (
+              <button
+                type="button"
+                onClick={handleResendOTP}
+                disabled={loading}
+                className="w-full py-2.5 text-sm font-semibold text-amber-400 hover:text-amber-300 border border-amber-500/30 hover:border-amber-400/50 rounded-xl transition-all disabled:opacity-50"
+              >
+                {loading ? "Mengirim..." : "🔄 Kirim Ulang OTP"}
+              </button>
+            )}
 
             <button
               type="button"
-              onClick={() => { setStep("phone"); setOtpCode(""); setError(""); setSuccessMsg(""); }}
+              onClick={() => { setStep("phone"); setOtpCode(""); setError(""); setSuccessMsg(""); setSubmitted(false); }}
               className="w-full py-2 text-sm text-neutral-500 hover:text-red-400 transition-colors font-medium"
             >
               Batal / Ganti Nomor

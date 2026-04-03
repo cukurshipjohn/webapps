@@ -105,17 +105,27 @@ export async function middleware(request: NextRequest) {
     }
 
     // ─── BRANCH 2: SUBDOMAIN TENANT ROUTING ──────────────────────────────────
-    // Skip untuk API routes, static files, dan admin login page
     const isApiRoute = pathname.startsWith('/api');
     const isStaticFile = pathname.startsWith('/_next') || pathname.startsWith('/favicon') || pathname.startsWith('/public');
     const isErrorPage = pathname === '/shop-not-found' || pathname === '/subscription-expired' || pathname === '/404-shop' || pathname === '/suspended-shop';
 
-    if (isStaticFile || isErrorPage) {
+    // [Fix 3] Admin & superadmin paths sepenuhnya dikecualikan dari tenant routing.
+    // Ini mencegah header tenant (x-tenant-id, x-tenant-slug) bocor ke halaman admin
+    // yang tidak membutuhkan konteks tenant & mencegah potensi konflik routing.
+    if (isAdminRoute || isSuperAdminRoute || isStaticFile || isErrorPage) {
         return NextResponse.next();
     }
 
-    // Untuk API routes pada subdomain tenant: inject x-tenant-slug (tanpa DB call)
-    // sehingga API dapat melakukan lookup sendiri dengan identifier yang jelas
+    // [Fix 2] API auth routes dikecualikan dari x-tenant-slug injection.
+    // /api/auth/* (request-otp, verify-otp, login, logout) bekerja berdasarkan
+    // phone_number & JWT saja — tidak butuh konteks tenant sama sekali.
+    const isAuthApiRoute = pathname.startsWith('/api/auth');
+    if (isAuthApiRoute) {
+        return NextResponse.next();
+    }
+
+    // Untuk API routes NON-AUTH pada subdomain tenant: inject x-tenant-slug (tanpa DB call)
+    // sehingga API (store/info, posts, dll.) dapat melakukan lookup sendiri.
     if (isApiRoute) {
         const slugForApi = extractTenantSlug(request);
         if (slugForApi) {
