@@ -36,7 +36,19 @@ export async function GET(request: NextRequest) {
             tenantId = barberData.tenant_id;
         }
 
-        // 2. CEK HARI LIBUR / CUTI (time_off)
+        // 2. BACA JAM OPERASIONAL TOKO DARI tenant_settings
+        // Jika tidak ada record, gunakan default 10:00 – 20:00
+        const { data: tenantSettings } = await supabaseAdmin
+            .from('tenant_settings')
+            .select('operating_open, operating_close')
+            .eq('tenant_id', tenantId)
+            .single();
+
+        // Ambil string jam (HH:MM) — DB menyimpan TIME sebagai "HH:MM:SS", slice 0-5 sudah cukup
+        const openStr  = (tenantSettings?.operating_open  as string | null)?.slice(0, 5) ?? '10:00';
+        const closeStr = (tenantSettings?.operating_close as string | null)?.slice(0, 5) ?? '20:00';
+
+        // 3. CEK HARI LIBUR / CUTI (time_off)
         // Cari apakah ada rentang libur yang mencakup tanggal ini
         const { data: timeOffData, error: timeOffError } = await supabaseAdmin
             .from('time_off')
@@ -59,7 +71,7 @@ export async function GET(request: NextRequest) {
             return NextResponse.json([]);
         }
 
-        // 3. Fetch semua booking barber ini pada tanggal yang dipilih
+        // 4. Fetch semua booking barber ini pada tanggal yang dipilih
         const { data: existingBookings, error } = await supabaseAdmin
             .from('bookings')
             .select('start_time, end_time')
@@ -77,10 +89,10 @@ export async function GET(request: NextRequest) {
         const gap = serviceType === 'home' ? DURATION_HOME_SERVICE : DURATION_BARBERSHOP;
         const availableSlots: Date[] = [];
 
-        // Buat slot mulai jam 10:00 WIB sampai 20:30 WIB
-        // Menggunakan format ISO dengan offset +07:00 agar tidak terpengaruh timezone server
-        const openTimeWIB = new Date(`${date}T10:00:00+07:00`);  // Jam buka 10:00 WIB
-        const closeTimeWIB = new Date(`${date}T20:30:00+07:00`); // Jam tutup 20:30 WIB
+        // Buat slot berdasarkan jam operasional toko (dibaca dari tenant_settings)
+        // Format ISO dengan offset +07:00 agar tidak terpengaruh timezone server
+        const openTimeWIB  = new Date(`${date}T${openStr}:00+07:00`);   // Jam buka dari pengaturan toko
+        const closeTimeWIB = new Date(`${date}T${closeStr}:00+07:00`);  // Jam tutup dari pengaturan toko
 
         let currentTimeSlot = new Date(openTimeWIB);
 

@@ -37,6 +37,8 @@ export default function BookAppointmentPage() {
   const [error, setError] = useState("");
   const [fetchError, setFetchError] = useState("");
   const [success, setSuccess] = useState(false);
+  // Jam operasional toko — diisi dari /api/store/info agar label slot sesuai pengaturan tenant
+  const [storeHours, setStoreHours] = useState<{ open: string; close: string }>({ open: '10:00', close: '20:00' });
 
   // Fetch barbers on mount
   useEffect(() => {
@@ -46,7 +48,7 @@ export default function BookAppointmentPage() {
       .catch(() => setFetchError("Tidak dapat memuat data barber."));
   }, []);
 
-  // Fetch shop details for Title & Favicon
+  // Fetch shop details for Title & Favicon & operating hours
   useEffect(() => {
     fetch("/api/store/info")
       .then(res => res.json())
@@ -60,6 +62,13 @@ export default function BookAppointmentPage() {
             document.head.appendChild(link);
           }
           link.href = data.logo_url;
+        }
+        // Ambil jam operasional toko untuk label slot — default 10:00/20:00 jika null
+        if (data.operating_open || data.operating_close) {
+          setStoreHours({
+            open:  data.operating_open  ?? '10:00',
+            close: data.operating_close ?? '20:00',
+          });
         }
       })
       .catch(() => {});
@@ -342,7 +351,7 @@ export default function BookAppointmentPage() {
                 <p className="text-neutral-500 text-sm">🔍 Mengecek ketersediaan slot...</p>
               ) : availableSlots.length > 0 ? (
                 <div>
-                  <p className="text-xs text-neutral-500 mb-3">Jam kerja: 10:00 – 20:30 WIB</p>
+                  <p className="text-xs text-neutral-500 mb-3">Jam kerja: {storeHours.open} – {storeHours.close} WIB</p>
                   <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
                     {availableSlots.map((slot, i) => {
                       const time = new Date(slot).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" });
