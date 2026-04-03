@@ -63,6 +63,10 @@ interface BillingData {
         period_end: string | null;
         created_at: string;
     }>;
+    // Promo info — dari API billing/status
+    paid_cycles: number;
+    is_in_promo: boolean;
+    promo_price: number;
 }
 
 function BillingPageInner() {
@@ -335,6 +339,7 @@ function BillingPageInner() {
                                 isCurrentPlan={currentPlanId === planId}
                                 onSelect={() => handleSelectPlan(base)}
                                 isLoading={loadingPlanId === planId}
+                                paidCycles={billingData?.paid_cycles ?? 0}
                             />
                         );
                     })}

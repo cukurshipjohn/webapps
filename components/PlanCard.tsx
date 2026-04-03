@@ -1,6 +1,6 @@
 "use client";
 
-import { PLANS, type PlanId } from "@/lib/billing-plans";
+import { PLANS, type PlanId, getPlanPrice, isInPromo } from "@/lib/billing-plans";
 
 interface PlanCardProps {
     planId: PlanId;
@@ -8,6 +8,8 @@ interface PlanCardProps {
     isCurrentPlan: boolean;
     onSelect: () => void;
     isLoading: boolean;
+    /** Jumlah transaksi paid/settled milik tenant. Dipakai untuk kalkulasi harga promo. Default 999 = tidak promo. */
+    paidCycles?: number;
 }
 
 export default function PlanCard({
@@ -16,12 +18,18 @@ export default function PlanCard({
     isCurrentPlan,
     onSelect,
     isLoading,
+    paidCycles = 999,
 }: PlanCardProps) {
     const plan = PLANS[planId];
     if (!plan) return null;
 
     const isAnnual = billingCycle === "annual";
     const isPopular = planId === "pro" || planId === "pro_annual";
+
+    // ── Promo logic (hanya berlaku untuk plan bulanan) ──────────────────────
+    // Plan tahunan: promo_price = null → isInPromo selalu false → tidak terpengaruh
+    const inPromo   = !isAnnual && isInPromo(planId, paidCycles);
+    const showPrice = !isAnnual ? getPlanPrice(planId, paidCycles) : plan.normal_price;
 
     // Savings info (only for annual plans)
     const savedAmount =
@@ -62,11 +70,20 @@ export default function PlanCard({
                         : "border-neutral-700 bg-neutral-900 hover:border-neutral-500"
                 }`}
             >
-                {/* Badge diskon (pojok kanan atas, hanya annual) */}
+                {/* Badge diskon pojok kanan atas — hanya annual */}
                 {isAnnual && plan.discount_percent > 0 && (
                     <div className="absolute -top-3 right-4">
                         <span className="inline-flex items-center rounded-full bg-amber-500 px-3 py-1 text-xs font-black text-black shadow-md shadow-amber-500/30">
                             Hemat {plan.discount_percent}%
+                        </span>
+                    </div>
+                )}
+
+                {/* Badge harga perkenalan pojok kanan atas — hanya bulanan + eligible promo */}
+                {inPromo && (
+                    <div className="absolute -top-3 right-4">
+                        <span className="inline-flex items-center rounded-full bg-emerald-500 px-3 py-1 text-xs font-black text-black shadow-md shadow-emerald-500/30">
+                            🎉 Harga Perkenalan
                         </span>
                     </div>
                 )}
@@ -84,7 +101,7 @@ export default function PlanCard({
                             <p className="text-sm text-neutral-500 line-through">
                                 {formatRp(plan.original_annual_price)}/tahun
                             </p>
-                            {/* Harga diskon */}
+                            {/* Harga diskon tahunan */}
                             <p className="text-3xl font-black text-white">
                                 {formatRp(plan.normal_price)}
                                 <span className="text-base font-normal text-neutral-400">/tahun</span>
@@ -102,10 +119,23 @@ export default function PlanCard({
                         </>
                     ) : (
                         <>
+                            {/* Harga normal dicoret jika user masih dalam promo */}
+                            {inPromo && (
+                                <p className="text-sm text-neutral-500 line-through">
+                                    {formatRp(plan.normal_price)}/bulan
+                                </p>
+                            )}
+                            {/* Harga tampil: promo_price atau normal_price */}
                             <p className="text-3xl font-black text-white">
-                                {formatRp(plan.normal_price)}
+                                {formatRp(showPrice)}
                                 <span className="text-base font-normal text-neutral-400">/bulan</span>
                             </p>
+                            {/* Keterangan durasi promo */}
+                            {inPromo && (
+                                <p className="text-xs text-emerald-400 font-medium mt-1">
+                                    Berlaku 2 bulan pertama
+                                </p>
+                            )}
                         </>
                     )}
                 </div>

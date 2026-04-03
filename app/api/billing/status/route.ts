@@ -7,6 +7,8 @@ import {
     getHomeServiceLimit,
     getAnnualSavings,
     canCustomSubdomain,
+    getPlanPrice,
+    isInPromo,
 } from '@/lib/billing-plans';
 
 export async function GET(request: NextRequest) {
@@ -74,6 +76,15 @@ export async function GET(request: NextRequest) {
             .order('created_at', { ascending: false })
             .limit(10);
 
+        // ─── 6b. Hitung paid_cycles (untuk kalkulasi promo di UI) ────────────────
+        const { count: paidCount } = await supabaseAdmin
+            .from('subscription_transactions')
+            .select('id', { count: 'exact', head: true })
+            .eq('tenant_id', tenantId)
+            .in('status', ['settled', 'paid']);
+
+        const paidCycles = paidCount ?? 0;
+
         // ─── 7. Hitung sisa hari aktif ───────────────────────────────────────────
         const expiresAt     = tenant.plan_expires_at ? new Date(tenant.plan_expires_at) : null;
         const daysRemaining = expiresAt
@@ -126,6 +137,11 @@ export async function GET(request: NextRequest) {
 
             // Riwayat pembayaran
             transactions: transactions ?? [],
+
+            // Info promo — dipakai UI PlanCard untuk tampilkan harga promo jika eligible
+            paid_cycles: paidCycles,
+            is_in_promo: isInPromo(planId, paidCycles),
+            promo_price: getPlanPrice(planId, paidCycles),
         });
 
     } catch (error: any) {
