@@ -7,7 +7,7 @@ import jwt from 'jsonwebtoken';
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { phoneNumber, otpCode, isAffiliateLogin } = body;
+        const { phoneNumber, otpCode, isAffiliateLogin, isSuperadminLogin } = body;
 
         if (!phoneNumber || !otpCode) {
             return NextResponse.json({ message: 'Nomor HP dan kode OTP diperlukan.' }, { status: 400 });
@@ -115,11 +115,20 @@ export async function POST(request: NextRequest) {
         }
 
         // 4. Terbitkan JWT token
+        // Superadmin override: role di JWT menjadi 'superadmin' HANYA jika:
+        //   (a) request berasal dari halaman superadmin login (isSuperadminLogin=true), DAN
+        //   (b) nomor cocok dengan SUPERADMIN_PHONE di env
+        // Semua flow lain (owner, customer, dll) tetap menggunakan role dari DB.
+        const superadminPhone = process.env.SUPERADMIN_PHONE;
+        const effectiveRole = (isSuperadminLogin && superadminPhone && phoneNumber === superadminPhone)
+            ? 'superadmin'
+            : user.role;
+
         const token = jwt.sign(
             { 
                 id: user.id, 
                 phoneNumber: user.phone_number,
-                role: user.role,
+                role: effectiveRole,
                 tenant_id: user.tenant_id
             },
             process.env.JWT_SECRET || 'fallback_secret',
@@ -136,7 +145,7 @@ export async function POST(request: NextRequest) {
                 address: user.address,
                 photoUrl: user.photo_url,
                 hobbies: user.hobbies,
-                role: user.role,
+                role: effectiveRole,
                 tenant_id: user.tenant_id
             },
             requireProfileCompletion: !user.name // Jika name null/kosong, berarti user baru

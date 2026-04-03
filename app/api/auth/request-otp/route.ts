@@ -16,14 +16,21 @@ export async function POST(request: Request) {
         
         // Strict Admin Portal Check: Prevent sending OTP if not an admin
         if (isAdminLogin) {
-            const { data: userData, error: userError } = await supabaseAdmin
-                .from('users')
-                .select('role')
-                .eq('phone_number', phoneNumber)
-                .single();
+            // Bypass khusus superadmin: jika nomor ada di env SUPERADMIN_PHONE,
+            // langsung izinkan tanpa cek DB role. Ini tidak mempengaruhi cek owner biasa.
+            const superadminPhone = process.env.SUPERADMIN_PHONE;
+            if (superadminPhone && phoneNumber === superadminPhone) {
+                // Superadmin dikenali dari env, bukan dari DB — lanjut ke generate OTP
+            } else {
+                const { data: userData, error: userError } = await supabaseAdmin
+                    .from('users')
+                    .select('role')
+                    .eq('phone_number', phoneNumber)
+                    .single();
 
-            if (userError || !userData || !['owner', 'superadmin'].includes(userData.role)) {
-                return NextResponse.json({ message: 'Akses Ditolak: Nomor ini tidak terdaftar sebagai Admin/Tenant.' }, { status: 403 });
+                if (userError || !userData || !['owner', 'superadmin'].includes(userData.role)) {
+                    return NextResponse.json({ message: 'Akses Ditolak: Nomor ini tidak terdaftar sebagai Admin/Tenant.' }, { status: 403 });
+                }
             }
         }
 
