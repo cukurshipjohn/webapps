@@ -218,6 +218,10 @@ export default function AffiliateDashboardPage() {
   const ROOT = "cukurship.id";
   const referralLink = `https://${ROOT}/register?ref=${profile.referral_code}`;
 
+  // [Fix 2 & 3] Tentukan apakah akun sudah aktif
+  const isActive = profile.status === "active";
+
+
   const tabs = [
     { id: "summary",    label: "Ringkasan",  icon: "📊" },
     { id: "commission", label: "Komisi",     icon: "💰" },
@@ -288,6 +292,38 @@ export default function AffiliateDashboardPage() {
           {/* ══ TAB: RINGKASAN ══════════════════════════════════════════════ */}
           {activeTab === "summary" && (
             <div className="space-y-6">
+              {/* [Fix 2] Banner Status — tampil jika akun belum active */}
+              {!isActive && (
+                <div className={`rounded-2xl p-5 border flex items-start gap-4 ${
+                  profile.status === "unverified"
+                    ? "bg-red-500/10 border-red-500/30"
+                    : "bg-yellow-500/10 border-yellow-500/30"
+                }`}>
+                  <span className="text-2xl flex-shrink-0">
+                    {profile.status === "unverified" ? "🔴" : "🟡"}
+                  </span>
+                  <div className="flex-1">
+                    <p className={`font-bold text-sm ${
+                      profile.status === "unverified" ? "text-red-400" : "text-yellow-300"
+                    }`}>
+                      {profile.status === "unverified"
+                        ? "Akun Belum Diverifikasi"
+                        : "Akun Menunggu Review Admin"}
+                    </p>
+                    <p className="text-neutral-400 text-xs mt-1">
+                      {profile.status === "unverified"
+                        ? "Buka WhatsApp kamu dan klik link verifikasi yang sudah dikirim saat pendaftaran. Akun & link referral kamu akan aktif setelah langkah ini."
+                        : "Akun kamu dalam proses review oleh admin. Link referral belum aktif sampai disetujui."}
+                    </p>
+                    {profile.status === "unverified" && (
+                      <p className="text-red-400/80 text-xs mt-2 font-medium">
+                        ⚠️ Jangan bagikan link referral sebelum verifikasi — klik tidak akan terekam.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <h1 className="text-2xl font-black text-white">Halo, {profile.name.split(" ")[0]}! 👋</h1>
                 <p className="text-neutral-400 text-sm mt-1">Berikut ringkasan aktivitas affiliasi kamu.</p>
@@ -342,29 +378,43 @@ export default function AffiliateDashboardPage() {
                 </button>
               </div>
 
-              {/* Referral Link Card */}
-              <div className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-6">
+              {/* [Fix 3] Referral Link Card — disable + overlay jika akun belum active */}
+              <div className={`bg-neutral-900/60 border rounded-2xl p-6 relative ${
+                isActive ? "border-neutral-800" : "border-neutral-700 opacity-75"
+              }`}>
                 <h2 className="text-lg font-bold text-white mb-4">🔗 Link Referral Kamu</h2>
                 <div className="flex items-center gap-3 bg-neutral-800/50 border border-neutral-700 rounded-xl px-4 py-3 mb-4">
-                  <p className="flex-1 text-amber-400 font-mono text-sm truncate">{referralLink}</p>
+                  <p className={`flex-1 font-mono text-sm truncate ${isActive ? "text-amber-400" : "text-neutral-600"}`}>
+                    {isActive ? referralLink : "Link aktif setelah verifikasi"}
+                  </p>
                   <span className="text-neutral-600 text-xs font-mono bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg text-amber-400">
                     {profile.referral_code}
                   </span>
                 </div>
                 <div className="flex gap-3">
                   <button
-                    onClick={handleCopyLink}
-                    className="flex-1 py-2.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-neutral-300 text-sm font-medium rounded-xl transition-all"
+                    onClick={isActive ? handleCopyLink : undefined}
+                    disabled={!isActive}
+                    className="flex-1 py-2.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-neutral-300 text-sm font-medium rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {copied ? "✅ Tersalin!" : "📋 Salin Link"}
                   </button>
                   <button
-                    onClick={handleShare}
-                    className="flex-1 py-2.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 text-sm font-medium rounded-xl transition-all"
+                    onClick={isActive ? handleShare : undefined}
+                    disabled={!isActive}
+                    className="flex-1 py-2.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 text-sm font-medium rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     📤 Bagikan via WA
                   </button>
                 </div>
+                {/* Overlay pesan jika belum aktif */}
+                {!isActive && (
+                  <div className="mt-3 text-center text-xs text-neutral-500">
+                    {profile.status === "unverified"
+                      ? "🔴 Verifikasi WhatsApp dahulu untuk mengaktifkan link"
+                      : "🟡 Menunggu persetujuan admin untuk mengaktifkan link"}
+                  </div>
+                )}
               </div>
             </div>
           )}

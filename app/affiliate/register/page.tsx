@@ -74,18 +74,65 @@ export default function AffiliateRegisterPage() {
   };
 
   if (success) {
+    const isUnverified = success.status === "unverified";
     return (
       <main className="min-h-screen bg-neutral-950 flex items-center justify-center p-6">
-        <div className="max-w-md w-full text-center space-y-6">
-          <div className="w-24 h-24 mx-auto bg-amber-500/10 border border-amber-500/30 rounded-3xl flex items-center justify-center text-5xl shadow-[0_0_60px_rgba(245,158,11,0.2)]">
-            {success.status === "active" ? "🎉" : "⏳"}
+        <div className="max-w-md w-full space-y-6">
+          {/* Icon & Title */}
+          <div className="text-center space-y-3">
+            <div className="w-24 h-24 mx-auto bg-amber-500/10 border border-amber-500/30 rounded-3xl flex items-center justify-center text-5xl shadow-[0_0_60px_rgba(245,158,11,0.2)]">
+              {isUnverified ? "📱" : "🎉"}
+            </div>
+            <h1 className="text-3xl font-bold text-white">
+              {isUnverified ? "Satu Langkah Lagi!" : "Selamat Bergabung!"}
+            </h1>
+            <p className="text-neutral-400 text-sm">
+              {isUnverified
+                ? "Pendaftaranmu berhasil. Akun belum aktif — ikuti langkah berikut untuk mengaktifkannya."
+                : success.message}
+            </p>
           </div>
-          <h1 className="text-3xl font-bold text-white">
-            {success.status === "active" ? "Selamat Bergabung!" : "Pendaftaran Diterima!"}
-          </h1>
-          <p className="text-neutral-400">{success.message}</p>
 
-          {success.referral_code && (
+          {/* Step Guide — hanya tampil jika masih perlu verifikasi */}
+          {isUnverified && (
+            <div className="bg-neutral-900/80 border border-neutral-800 rounded-2xl p-6 space-y-4">
+              <h2 className="text-white font-bold text-base">📋 Langkah Aktivasi Akun</h2>
+              <ol className="space-y-4">
+                {/* Step 1 */}
+                <li className="flex items-start gap-4">
+                  <div className="w-8 h-8 flex-shrink-0 rounded-full bg-green-500/20 border border-green-500/40 flex items-center justify-center text-green-400 font-bold text-sm">1</div>
+                  <div>
+                    <p className="text-white font-semibold text-sm">Buka WhatsApp kamu</p>
+                    <p className="text-neutral-400 text-xs mt-0.5">Kami sudah mengirim pesan ke nomor <span className="text-amber-400 font-mono">{form.phone}</span></p>
+                  </div>
+                </li>
+                {/* Step 2 */}
+                <li className="flex items-start gap-4">
+                  <div className="w-8 h-8 flex-shrink-0 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 font-bold text-sm">2</div>
+                  <div>
+                    <p className="text-white font-semibold text-sm">Klik link verifikasi di pesan tersebut</p>
+                    <p className="text-neutral-400 text-xs mt-0.5">Link verifikasi berlaku 24 jam. Wajib diklik agar akun aktif.</p>
+                  </div>
+                </li>
+                {/* Step 3 */}
+                <li className="flex items-start gap-4">
+                  <div className="w-8 h-8 flex-shrink-0 rounded-full bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400 font-bold text-sm">3</div>
+                  <div>
+                    <p className="text-white font-semibold text-sm">Login ke dashboard & mulai bagikan link</p>
+                    <p className="text-neutral-400 text-xs mt-0.5">Setelah verifikasi, kode referral & link kamu sudah aktif.</p>
+                  </div>
+                </li>
+              </ol>
+
+              {/* Alert notice */}
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-4 py-3 text-yellow-300 text-xs">
+                ⚠️ <strong>Jangan bagikan link referral sebelum verifikasi.</strong> Link tidak akan merekam klik selama akun belum aktif.
+              </div>
+            </div>
+          )}
+
+          {/* Referral code block — hanya jika sudah active */}
+          {success.referral_code && !isUnverified && (
             <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6 space-y-3">
               <p className="text-neutral-400 text-sm">Kode Referral Kamu</p>
               <p className="text-3xl font-black text-amber-400 font-mono tracking-widest">{success.referral_code}</p>
@@ -98,8 +145,11 @@ export default function AffiliateRegisterPage() {
             </div>
           )}
 
-          <Link href="/affiliate/login" className="block py-3 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-xl transition-all">
-            Masuk ke Dashboard →
+          <Link
+            href="/affiliate/login"
+            className="block py-3 text-center bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold rounded-xl transition-all border border-neutral-700 text-sm"
+          >
+            Sudah Verifikasi? Masuk ke Dashboard →
           </Link>
         </div>
       </main>
