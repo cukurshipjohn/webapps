@@ -11,6 +11,8 @@ export interface Barber {
   phone: string | null;
   specialty: string | null;
   photo_url: string | null;
+  telegram_username: string | null;
+  telegram_chat_id: string | null;
   tenant_id: string;
   created_at: string;
 }
@@ -23,7 +25,7 @@ export default function AdminBarbersPage() {
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState<Partial<Barber>>({ name: "", phone: "", specialty: "", photo_url: "" });
+  const [formData, setFormData] = useState<Partial<Barber>>({ name: "", phone: "", specialty: "", photo_url: "", telegram_username: "", telegram_chat_id: "" });
   const [submitting, setSubmitting] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
@@ -58,7 +60,7 @@ export default function AdminBarbersPage() {
   };
 
   const openAddModal = () => {
-    setFormData({ name: "", phone: "", specialty: "", photo_url: "" });
+    setFormData({ name: "", phone: "", specialty: "", photo_url: "", telegram_username: "", telegram_chat_id: "" });
     setIsEditing(false);
     setIsModalOpen(true);
   };
@@ -69,7 +71,9 @@ export default function AdminBarbersPage() {
       name: barber.name,
       phone: barber.phone || "",
       specialty: barber.specialty || "",
-      photo_url: barber.photo_url || ""
+      photo_url: barber.photo_url || "",
+      telegram_username: barber.telegram_username || "",
+      telegram_chat_id: barber.telegram_chat_id || ""
     });
     setIsEditing(true);
     setIsModalOpen(true);
@@ -320,6 +324,31 @@ Peringatan: Tidak bisa dihapus jika ada pesanan (booking) yang masih aktif.`)) {
                   placeholder="Contoh: Fade Expert, Classic Pompadour"
                   disabled={submitting}
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-neutral-400 mb-1">Username Telegram (Opsional)</label>
+                <input 
+                  type="text" 
+                  value={formData.telegram_username || ""} 
+                  onChange={(e) => setFormData({...formData, telegram_username: e.target.value})}
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary transition-colors"
+                  placeholder="Contoh: @budibarber"
+                  disabled={submitting}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-neutral-400 mb-1">Chat ID Telegram Kasir</label>
+                <input 
+                  type="text" 
+                  value={formData.telegram_chat_id || ""} 
+                  onChange={(e) => setFormData({...formData, telegram_chat_id: e.target.value})}
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary transition-colors font-mono text-sm"
+                  placeholder="Contoh: 123456789"
+                  disabled={submitting}
+                />
+                <p className="text-[10px] text-neutral-500 mt-1">Dapatkan Chat ID ini dengan meminta kapster mengirim pesan ke bot kasir Anda. Server akan menangkap ID-nya.</p>
               </div>
 
               {/* CTA */}

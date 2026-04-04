@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
         }
         
         const body = await request.json();
-        const { name, phone, specialty, photo_url } = body;
+        const { name, phone, specialty, photo_url, telegram_username, telegram_chat_id } = body;
         
         if (!name) return NextResponse.json({ message: 'Nama kapster wajib diisi' }, { status: 400 });
 
@@ -58,6 +58,8 @@ export async function POST(request: NextRequest) {
                 phone: phone || null,
                 specialty: specialty || null,
                 photo_url: photo_url || null,
+                telegram_username: telegram_username || null,
+                telegram_chat_id: telegram_chat_id || null,
                 tenant_id: user.tenant_id
             })
             .select()
@@ -81,7 +83,7 @@ export async function PUT(request: NextRequest) {
         }
         
         const body = await request.json();
-        const { id, name, phone, specialty, photo_url } = body;
+        const { id, name, phone, specialty, photo_url, telegram_username, telegram_chat_id } = body;
         
         if (!id || !name) return NextResponse.json({ message: 'ID dan Nama wajib diisi' }, { status: 400 });
 
@@ -99,7 +101,14 @@ export async function PUT(request: NextRequest) {
         
         const { data, error } = await supabaseAdmin
             .from('barbers')
-            .update({ name, phone: phone || null, specialty: specialty || null, photo_url: photo_url || null })
+            .update({ 
+                name, 
+                phone: phone || null, 
+                specialty: specialty || null, 
+                photo_url: photo_url || null,
+                telegram_username: telegram_username || null,
+                telegram_chat_id: telegram_chat_id || null
+            })
             .eq('id', id)
             .eq('tenant_id', user.tenant_id)
             .select()
