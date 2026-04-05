@@ -257,7 +257,7 @@ export default function DashboardPage() {
     formData.append("file", file);
 
     try {
-      const res = await fetch("/api/profile/photo", { method: "POST", body: formData });
+      const res = await fetch("/api/profile/upload", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
       
