@@ -206,19 +206,24 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ ok: true });
             }
 
-            // ── Handle input angka untuk price_type = 'range' (dari session) ──
+            // ── Handle input angka untuk price_type = 'range' atau 'custom' (dari session) ──
             const replyTo = body.message.reply_to_message;
             if (/^\d+$/.test(text) && replyTo && replyTo.text?.includes('#SVC_')) {
-                const match = replyTo.text.match(/#SVC_([a-zA-Z0-9-]+)_(\d+)_(\d+)/);
-                if (match) {
-                    const [_, serviceId, minStr, maxStr] = match;
+                const matchRange = replyTo.text.match(/#SVC_([a-zA-Z0-9-]+)_(\d+)_(\d+)/);
+                const matchCustom = replyTo.text.match(/#SVC_([a-zA-Z0-9-]+)_CUSTOM/);
+                
+                if (matchRange || matchCustom) {
+                    const serviceId = matchRange ? matchRange[1] : matchCustom![1];
                     const amount = parseInt(text, 10);
-                    const pMin = parseInt(minStr, 10);
-                    const pMax = parseInt(maxStr, 10);
+                    
+                    if (matchRange) {
+                        const pMin = parseInt(matchRange[2], 10);
+                        const pMax = parseInt(matchRange[3], 10);
 
-                    if (amount < pMin || amount > pMax) {
-                        await sendTelegramMessage(chatId, `⚠️ Nominal tidak valid. Harus antara Rp ${formatIDR(pMin).replace('Rp', '').trim()} – Rp ${formatIDR(pMax).replace('Rp', '').trim()}.\n\nSilakan ulangi /kasir atau balas pesan ini kembali dengan angka yang benar.`, { force_reply: true });
-                        return NextResponse.json({ ok: true });
+                        if (amount < pMin || amount > pMax) {
+                            await sendTelegramMessage(chatId, `⚠️ Nominal tidak valid. Harus antara Rp ${formatIDR(pMin).replace('Rp', '').trim()} – Rp ${formatIDR(pMax).replace('Rp', '').trim()}.\n\nSilakan ulangi /kasir atau balas pesan ini kembali dengan angka yang benar.`, { force_reply: true });
+                            return NextResponse.json({ ok: true });
+                        }
                     }
 
                     // Ambil layanan untuk konfirmasi
@@ -515,9 +520,19 @@ export async function POST(request: NextRequest) {
                     return NextResponse.json({ ok: true });
                 }
 
-                // ── Handle price_type = 'custom' → tampilkan konfirmasi dengan input manual ──
-                // For custom, we still record with base price — owner manages via admin
-                // Fall through to fixed price flow
+                // ── Handle price_type = 'custom' → wajib input manual ──
+                if (svc.price_type === 'custom') {
+                    await editTelegramMessage(chatId, messageId, `✏️ Menyiapkan input harga untuk <b>${svc.name}</b>...`);
+                    await sendTelegramMessage(chatId,
+                        `✏️ <b>${svc.name}</b>\n\n` +
+                        `Ketik nominal harga untuk transaksi ini.\n` +
+                        `\n<i>ℹ️ Balas (reply) pesan ini dengan mengetik angka saja, tanpa titik. Contoh: 50000</i>\n` +
+                        `\n#SVC_${serviceId}_CUSTOM`,
+                        { force_reply: true }
+                    );
+                    await answerCallbackQuery(callbackId);
+                    return NextResponse.json({ ok: true });
+                }
 
                 // ── Handle price_type = 'fixed' (default) → langsung insert ──
                 const finalPrice = svc.final_price;
