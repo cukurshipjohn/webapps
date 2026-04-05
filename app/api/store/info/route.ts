@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { getUserFromToken } from '@/lib/auth';
+import { BOOKING_SERVICE_TYPES } from '@/lib/service-types';
 
 // Public endpoint — no auth required, readable by anyone visiting the tenant subdomain
 export const dynamic = 'force-dynamic';
@@ -84,10 +85,19 @@ export async function GET(request: NextRequest) {
             .order('name', { ascending: true });
 
         // Fetch active services (public info: name, price, duration, type)
+        // SECURITY: pos_kasir services must never appear in
+        // customer portal. Filter strictly by booking-type services.
+        const allowedTypes = BOOKING_SERVICE_TYPES;
+        const typeParam = request.nextUrl.searchParams.get('type');
+        const serviceTypeFilter = (typeParam && (allowedTypes as readonly string[]).includes(typeParam))
+            ? [typeParam]    // ?type=barbershop or ?type=home_service only
+            : [...allowedTypes]; // default: both booking types, NEVER pos_kasir
+
         const { data: services } = await supabaseAdmin
             .from('services')
             .select('id, name, price, duration_minutes, service_type')
             .eq('tenant_id', tenantId)
+            .in('service_type', serviceTypeFilter)
             .order('service_type', { ascending: true })
             .order('price', { ascending: true });
 

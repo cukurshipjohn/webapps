@@ -15,14 +15,21 @@ export const PLANS = {
     price_per_month: 0,
     discount_percent: 0,
     original_annual_price: null as null,
-    max_barbers: 1,
-    max_bookings_per_month: 10,
-    max_home_service_per_month: 0,
+    // Trial = demo penuh Business (architecture.md section 12)
+    max_barbers: 999999,
+    max_bookings_per_month: 999999,
+    max_home_service_per_month: 999999,
     custom_subdomain: false,
-    subdomain_revisions: 0,
-    can_blast_wa: false,
+    subdomain_revisions: 5,
+    can_blast_wa: true,
+    kasirEnabled: true,
+    maxKasirBarbers: null as null,
     features: [
-      'Fitur dasar uji coba gratis'
+      'Demo lengkap semua fitur Business',
+      'Kapster tidak terbatas',
+      'Booking tidak terbatas',
+      'Kasir Telegram (unlimited)',
+      'Blast WA ke pelanggan',
     ],
   },
   starter: {
@@ -41,6 +48,8 @@ export const PLANS = {
     custom_subdomain: false,
     subdomain_revisions: 0,
     can_blast_wa: false,
+    kasirEnabled: false,
+    maxKasirBarbers: 0,
     features: [
       'Halaman booking pelanggan',
       'Notifikasi WA otomatis',
@@ -65,6 +74,8 @@ export const PLANS = {
     custom_subdomain: false,
     subdomain_revisions: 0,
     can_blast_wa: true,
+    kasirEnabled: true,
+    maxKasirBarbers: 1,
     features: [
       'Semua fitur Starter',
       'Home Service aktif',
@@ -72,6 +83,7 @@ export const PLANS = {
       'Booking tidak terbatas',
       'Laporan pendapatan bulanan',
       'Blast WA ke pelanggan',
+      'Kasir Telegram (1 barber)',
     ],
   },
   business: {
@@ -90,11 +102,14 @@ export const PLANS = {
     custom_subdomain: false,
     subdomain_revisions: 0,
     can_blast_wa: true,
+    kasirEnabled: true,
+    maxKasirBarbers: null as null,
     features: [
       'Semua fitur Pro',
       'Kapster tidak terbatas',
       'WA session toko sendiri',
       'Priority support',
+      'Kasir Telegram (unlimited barber)',
     ],
   },
 
@@ -115,6 +130,8 @@ export const PLANS = {
     custom_subdomain: true,
     subdomain_revisions: 0,      // set 1x, tidak bisa diubah
     can_blast_wa: false,
+    kasirEnabled: false,
+    maxKasirBarbers: 0,
     features: [
       'Semua fitur Starter Bulanan',
       'Hemat 10% vs bulanan',
@@ -138,11 +155,14 @@ export const PLANS = {
     custom_subdomain: true,
     subdomain_revisions: 1,      // bisa ganti 1 kali
     can_blast_wa: true,
+    kasirEnabled: true,
+    maxKasirBarbers: 1,
     features: [
       'Semua fitur Pro Bulanan',
       'Hemat 20% vs bulanan',
       'Custom subdomain (1x revisi)',
       'Harga terkunci 1 tahun',
+      'Kasir Telegram (1 barber)',
     ],
   },
   business_annual: {
@@ -161,12 +181,15 @@ export const PLANS = {
     custom_subdomain: true,
     subdomain_revisions: 3,      // bisa ganti 3 kali
     can_blast_wa: true,
+    kasirEnabled: true,
+    maxKasirBarbers: null as null,
     features: [
       'Semua fitur Business Bulanan',
       'Hemat 25% vs bulanan',
       'Custom subdomain (3x revisi)',
       'Harga terkunci 1 tahun',
       'Priority support',
+      'Kasir Telegram (unlimited barber)',
     ],
   },
 } as const;
@@ -187,6 +210,8 @@ export interface PlanDetails {
   custom_subdomain: boolean;
   subdomain_revisions: number;
   can_blast_wa: boolean;
+  kasirEnabled: boolean;
+  maxKasirBarbers: number | null;
   features: readonly string[];
 }
 
@@ -268,4 +293,31 @@ export function promoMonthsRemaining(planId: string, paidCyclesCount: number): n
   if (plan.promo_price === null) return 0;
   const remaining = plan.promo_duration_months - paidCyclesCount;
   return remaining > 0 ? remaining : 0;
+}
+
+/** Cek apakah plan bisa menggunakan fitur kasir Telegram.
+ *  Trial, Pro, Business (dan semua varian annual) → true
+ *  Starter (semua varian) → false */
+export function canUseKasir(planId: string): boolean {
+  const plan = getPlanById(planId);
+  if (!plan) return false;
+  return plan.kasirEnabled ?? false;
+}
+
+/** Ambil batas maksimal barber yang bisa aktif di kasir.
+ *  null = unlimited (trial, business, business_annual)
+ *  1    = pro, pro_annual
+ *  0    = starter, starter_annual */
+export function getMaxKasirBarbers(planId: string): number | null {
+  const plan = getPlanById(planId);
+  if (!plan) return 0;
+  return plan.maxKasirBarbers === undefined ? 0 : plan.maxKasirBarbers;
+}
+
+/** Cek apakah plan adalah Trial.
+ *  Gunakan hanya untuk UI display (banner, label), BUKAN untuk gate fitur.
+ *  Contoh: "Kamu sedang dalam masa Trial. Fitur ini tetap tersedia
+ *  setelah berlangganan Pro atau Business." */
+export function isTrialPlan(planId: string): boolean {
+  return planId === 'trial';
 }
