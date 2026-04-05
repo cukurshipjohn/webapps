@@ -22,12 +22,25 @@ export default function AdminBarbersPage() {
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Modal states
+  // Modal states (Add/Edit Barber)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<Barber>>({ name: "", phone: "", specialty: "", photo_url: "", telegram_username: "", telegram_chat_id: "" });
   const [submitting, setSubmitting] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  // Telegram Modal states
+  const [telegramModalOpen, setTelegramModalOpen] = useState(false);
+  const [telegramBarber, setTelegramBarber] = useState<Barber | null>(null);
+  const [telegramChatId, setTelegramChatId] = useState("");
+  const [telegramUsername, setTelegramUsername] = useState("");
+  const [telegramSubmitting, setTelegramSubmitting] = useState(false);
+  const [telegramError, setTelegramError] = useState("");
+
+  // Disconnect confirmation modal
+  const [disconnectModalOpen, setDisconnectModalOpen] = useState(false);
+  const [disconnectBarber, setDisconnectBarber] = useState<Barber | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   // Toast / Notification
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -137,8 +150,7 @@ export default function AdminBarbersPage() {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Apakah Anda yakin ingin menghapus kapster "${name}"?
-Peringatan: Tidak bisa dihapus jika ada pesanan (booking) yang masih aktif.`)) {
+    if (!confirm(`Apakah Anda yakin ingin menghapus kapster "${name}"?\nPeringatan: Tidak bisa dihapus jika ada pesanan (booking) yang masih aktif.`)) {
       return;
     }
     
@@ -157,8 +169,113 @@ Peringatan: Tidak bisa dihapus jika ada pesanan (booking) yang masih aktif.`)) {
       fetchBarbers();
     } catch (err: any) {
       showToast(err.message, "error");
-      setLoading(false); // Enable UI back if failed
+      setLoading(false);
     }
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // TELEGRAM MODAL HANDLERS
+  // ═══════════════════════════════════════════════════════════
+
+  const openTelegramModal = (barber: Barber) => {
+    setTelegramBarber(barber);
+    setTelegramChatId(barber.telegram_chat_id || "");
+    setTelegramUsername(barber.telegram_username || "");
+    setTelegramError("");
+    setTelegramModalOpen(true);
+  };
+
+  const handleTelegramSubmit = async () => {
+    if (!telegramBarber) return;
+    setTelegramError("");
+
+    // Client-side validation
+    const chatIdClean = telegramChatId.trim();
+    if (!chatIdClean) {
+      setTelegramError("Chat ID wajib diisi.");
+      return;
+    }
+    if (!/^\d{5,15}$/.test(chatIdClean)) {
+      setTelegramError("Chat ID harus berupa angka saja (5-15 digit). Jangan ketik @username, ketik angkanya.");
+      return;
+    }
+
+    setTelegramSubmitting(true);
+    try {
+      const res = await fetch(`/api/admin/barbers/${telegramBarber.id}/telegram`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          telegram_chat_id: chatIdClean,
+          telegram_username: telegramUsername.trim() || null
+        })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data.error === "CHAT_ID_DUPLICATE") {
+          setTelegramError("Chat ID ini sudah terdaftar untuk barber lain di toko ini. Pastikan angkanya benar.");
+        } else if (data.error === "CHAT_ID_TAKEN") {
+          setTelegramError("Chat ID ini sudah digunakan di toko lain.");
+        } else if (data.error === "INVALID_CHAT_ID") {
+          setTelegramError("Chat ID harus berupa angka saja. Jangan ketik @username, ketik angkanya.");
+        } else {
+          setTelegramError(data.message || "Terjadi kesalahan.");
+        }
+        return;
+      }
+
+      // Sukses → update state lokal langsung tanpa reload
+      setBarbers(prev => prev.map(b =>
+        b.id === telegramBarber.id
+          ? { ...b, telegram_chat_id: chatIdClean, telegram_username: telegramUsername.trim().replace(/^@/, '') || null }
+          : b
+      ));
+      setTelegramModalOpen(false);
+      showToast(`✅ Telegram ${telegramBarber.name} berhasil dihubungkan!`, "success");
+    } catch (err: any) {
+      setTelegramError(err.message || "Gagal menghubungkan Telegram.");
+    } finally {
+      setTelegramSubmitting(false);
+    }
+  };
+
+  const openDisconnectModal = (barber: Barber) => {
+    setDisconnectBarber(barber);
+    setDisconnectModalOpen(true);
+  };
+
+  const handleDisconnect = async () => {
+    if (!disconnectBarber) return;
+    setDisconnecting(true);
+    try {
+      const res = await fetch(`/api/admin/barbers/${disconnectBarber.id}/telegram`, {
+        method: "DELETE",
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Gagal memutuskan Telegram");
+
+      // Update state lokal langsung
+      setBarbers(prev => prev.map(b =>
+        b.id === disconnectBarber.id
+          ? { ...b, telegram_chat_id: null, telegram_username: null }
+          : b
+      ));
+      setDisconnectModalOpen(false);
+      showToast(`Telegram ${disconnectBarber.name} berhasil diputuskan`, "success");
+    } catch (err: any) {
+      showToast(err.message, "error");
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  // Helper: Sensor Chat ID
+  const maskChatId = (chatId: string) => {
+    if (chatId.length <= 4) return chatId;
+    return '••••' + chatId.slice(-4);
   };
 
   return (
@@ -244,6 +361,49 @@ Peringatan: Tidak bisa dihapus jika ada pesanan (booking) yang masih aktif.`)) {
                     <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-semibold mb-1">📞 Kontak</p>
                     <p className="text-sm text-neutral-300 font-mono">{barber.phone || "-"}</p>
                   </div>
+
+                  {/* ═══ TELEGRAM STATUS BADGE ═══ */}
+                  <div className="w-full mt-3">
+                    {barber.telegram_chat_id ? (
+                      <div className="bg-green-500/5 border border-green-500/20 rounded-xl p-3">
+                        <div className="flex items-center justify-center gap-1.5 mb-1.5">
+                          <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                          <span className="text-xs font-semibold text-green-400">Telegram Terhubung</span>
+                        </div>
+                        <p className="text-[11px] text-neutral-400 font-mono mb-2.5">
+                          {barber.telegram_username ? `@${barber.telegram_username}` : `ID: ${maskChatId(barber.telegram_chat_id)}`}
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => openTelegramModal(barber)}
+                            className="flex-1 text-[11px] py-1.5 bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 rounded-lg transition-colors border border-neutral-700"
+                          >
+                            ⚙️ Ganti
+                          </button>
+                          <button
+                            onClick={() => openDisconnectModal(barber)}
+                            className="flex-1 text-[11px] py-1.5 bg-neutral-800/80 hover:bg-red-500/20 text-neutral-300 hover:text-red-400 rounded-lg transition-colors border border-neutral-700 hover:border-red-500/30"
+                          >
+                            🔌 Putuskan
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-neutral-800/30 border border-neutral-700/50 rounded-xl p-3">
+                        <div className="flex items-center justify-center gap-1.5 mb-1">
+                          <span className="w-2 h-2 bg-neutral-500 rounded-full"></span>
+                          <span className="text-xs font-semibold text-neutral-500">Belum Terhubung</span>
+                        </div>
+                        <p className="text-[10px] text-neutral-600 mb-2.5">Barber belum bisa pakai kasir</p>
+                        <button
+                          onClick={() => openTelegramModal(barber)}
+                          className="w-full text-[11px] py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-lg transition-colors border border-blue-500/20 hover:border-blue-500/40 font-medium"
+                        >
+                          📱 Hubungkan Telegram
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -251,7 +411,7 @@ Peringatan: Tidak bisa dihapus jika ada pesanan (booking) yang masih aktif.`)) {
         )}
       </div>
 
-      {/* Modal Form */}
+      {/* ═══════════ Modal: Add/Edit Barber (EXISTING) ═══════════ */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop */}
@@ -326,31 +486,6 @@ Peringatan: Tidak bisa dihapus jika ada pesanan (booking) yang masih aktif.`)) {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-neutral-400 mb-1">Username Telegram (Opsional)</label>
-                <input 
-                  type="text" 
-                  value={formData.telegram_username || ""} 
-                  onChange={(e) => setFormData({...formData, telegram_username: e.target.value})}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary transition-colors"
-                  placeholder="Contoh: @budibarber"
-                  disabled={submitting}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-neutral-400 mb-1">Chat ID Telegram Kasir</label>
-                <input 
-                  type="text" 
-                  value={formData.telegram_chat_id || ""} 
-                  onChange={(e) => setFormData({...formData, telegram_chat_id: e.target.value})}
-                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary transition-colors font-mono text-sm"
-                  placeholder="Contoh: 123456789"
-                  disabled={submitting}
-                />
-                <p className="text-[10px] text-neutral-500 mt-1">Dapatkan Chat ID ini dengan meminta kapster mengirim pesan ke bot kasir Anda. Server akan menangkap ID-nya.</p>
-              </div>
-
               {/* CTA */}
               <div className="flex gap-3 pt-4 border-t border-neutral-800/50">
                 <button 
@@ -372,6 +507,144 @@ Peringatan: Tidak bisa dihapus jika ada pesanan (booking) yang masih aktif.`)) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════ Modal: Hubungkan Telegram ═══════════ */}
+      {telegramModalOpen && telegramBarber && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => !telegramSubmitting && setTelegramModalOpen(false)}></div>
+          
+          <div className="relative z-10 w-full max-w-md bg-neutral-950 border border-neutral-800 max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-6 border-b border-neutral-800/50">
+              <h2 className="text-xl font-bold">📱 Hubungkan Telegram</h2>
+              <p className="text-sm text-neutral-400 mt-1">
+                {telegramBarber.telegram_chat_id ? `Ganti koneksi Telegram ${telegramBarber.name}` : `Hubungkan ${telegramBarber.name} ke kasir Telegram`}
+              </p>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {/* Instruksi */}
+              <div className="bg-blue-500/5 border border-blue-500/15 rounded-xl p-4">
+                <p className="text-xs font-semibold text-blue-400 mb-2.5">📋 Cara mendapatkan Chat ID barber:</p>
+                <ol className="text-xs text-neutral-400 space-y-1.5 list-decimal list-inside">
+                  <li>Minta <span className="text-white font-medium">{telegramBarber.name}</span> buka Telegram</li>
+                  <li>Cari bot kasir toko kamu</li>
+                  <li>Ketik perintah: <code className="bg-neutral-800 px-1.5 py-0.5 rounded text-blue-300">/daftar</code></li>
+                  <li>Bot akan membalas dengan Chat ID berupa angka</li>
+                  <li>Minta <span className="text-white font-medium">{telegramBarber.name}</span> kirimkan angka tersebut ke kamu</li>
+                  <li>Masukkan angka itu di kolom bawah ini</li>
+                </ol>
+              </div>
+
+              {/* Form Chat ID */}
+              <div>
+                <label className="block text-xs font-medium text-neutral-400 mb-1">
+                  Chat ID Telegram <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="\d*"
+                  value={telegramChatId}
+                  onChange={(e) => {
+                    setTelegramChatId(e.target.value);
+                    setTelegramError("");
+                  }}
+                  className={`w-full bg-neutral-900 border rounded-xl px-4 py-3 text-white focus:outline-none transition-colors font-mono text-sm ${
+                    telegramError ? 'border-red-500/50 focus:border-red-500' : 'border-neutral-800 focus:border-primary'
+                  }`}
+                  placeholder="Contoh: 123456789"
+                  disabled={telegramSubmitting}
+                />
+                <p className="text-[10px] text-neutral-600 mt-1">Chat ID berupa angka saja, bukan @username</p>
+              </div>
+
+              {/* Form Username */}
+              <div>
+                <label className="block text-xs font-medium text-neutral-400 mb-1">Username Telegram (opsional)</label>
+                <input
+                  type="text"
+                  value={telegramUsername}
+                  onChange={(e) => setTelegramUsername(e.target.value)}
+                  className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary transition-colors text-sm"
+                  placeholder="@namabarber"
+                  disabled={telegramSubmitting}
+                />
+                <p className="text-[10px] text-neutral-600 mt-1">Isi jika barber punya username Telegram</p>
+              </div>
+
+              {/* Inline Error */}
+              {telegramError && (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex items-start gap-2">
+                  <span className="text-red-500 text-sm mt-0.5">⚠️</span>
+                  <p className="text-xs text-red-400">{telegramError}</p>
+                </div>
+              )}
+
+              {/* CTA */}
+              <div className="flex gap-3 pt-4 border-t border-neutral-800/50">
+                <button
+                  type="button"
+                  onClick={() => setTelegramModalOpen(false)}
+                  disabled={telegramSubmitting}
+                  className="flex-1 py-3 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 font-medium rounded-xl transition-all border border-neutral-800"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTelegramSubmit}
+                  disabled={telegramSubmitting || !telegramChatId.trim()}
+                  className="flex-1 py-3 bg-primary hover:bg-primary-hover text-background font-bold rounded-xl transition-all disabled:opacity-50 flex justify-center items-center gap-2"
+                >
+                  {telegramSubmitting ? (
+                    <><span className="w-4 h-4 border-2 border-background/20 border-t-background rounded-full animate-spin"></span> Menyimpan...</>
+                  ) : "💾 Simpan & Hubungkan"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════ Modal: Konfirmasi Putuskan Telegram ═══════════ */}
+      {disconnectModalOpen && disconnectBarber && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => !disconnecting && setDisconnectModalOpen(false)}></div>
+
+          <div className="relative z-10 w-full max-w-sm bg-neutral-950 border border-neutral-800 rounded-3xl shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center text-3xl mx-auto mb-4 border border-red-500/20">
+                ⚠️
+              </div>
+              <h3 className="text-lg font-bold text-white mb-2">Putuskan Telegram {disconnectBarber.name}?</h3>
+              <p className="text-sm text-neutral-400 mb-6">
+                Setelah diputuskan, <span className="text-white font-medium">{disconnectBarber.name}</span> tidak bisa menggunakan kasir Telegram sampai dihubungkan kembali.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDisconnectModalOpen(false)}
+                  disabled={disconnecting}
+                  className="flex-1 py-3 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 font-medium rounded-xl transition-all border border-neutral-800"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDisconnect}
+                  disabled={disconnecting}
+                  className="flex-1 py-3 bg-red-500/80 hover:bg-red-500 text-white font-bold rounded-xl transition-all disabled:opacity-50 flex justify-center items-center gap-2"
+                >
+                  {disconnecting ? (
+                    <><span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></span> Memutuskan...</>
+                  ) : "Ya, Putuskan"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

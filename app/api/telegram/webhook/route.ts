@@ -57,14 +57,52 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
 
-        // ─── CABANG 1: ADA PESAN TEKS MASUK (misal: /start atau /kasir) ───
+        // ─── CABANG 1: ADA PESAN TEKS MASUK (misal: /start, /kasir, /daftar) ───
         if (body.message && body.message.text) {
             const chatId = body.message.chat.id.toString();
             const text = body.message.text.trim().toLowerCase();
+            const username = body.message.from?.username || null;
 
             await sendChatAction(chatId);
 
-            // Cek apakah chat_id terdaftar di tabel barbers
+            // ── COMMAND /daftar dan /id: Bisa dipakai SIAPA SAJA (terdaftar atau belum) ──
+            if (text === '/daftar' || text === '/id') {
+                const { data: existingBarber } = await supabaseAdmin
+                    .from('barbers')
+                    .select('id, name, tenant_id')
+                    .eq('telegram_chat_id', chatId)
+                    .single();
+
+                if (existingBarber) {
+                    // Sudah terdaftar → konfirmasi
+                    await sendTelegramMessage(chatId,
+                        `✅ <b>Kamu sudah terdaftar sebagai kapster aktif!</b>\n\n` +
+                        `Nama   : ${existingBarber.name}\n` +
+                        `Chat ID: <code>${chatId}</code>\n\n` +
+                        `Ketik /kasir untuk mulai mencatat transaksi.`
+                    );
+                } else {
+                    // Belum terdaftar → tampilkan Chat ID dalam kotak ASCII
+                    const chatIdPadded = ` ${chatId} `;
+                    const boxWidth = chatIdPadded.length + 2;
+                    const topBorder = '┌' + '─'.repeat(boxWidth) + '┐';
+                    const bottomBorder = '└' + '─'.repeat(boxWidth) + '┘';
+                    const middle = '│ ' + chatIdPadded + ' │';
+
+                    await sendTelegramMessage(chatId,
+                        `👋 <b>Halo!</b> Berikut informasi akun Telegram kamu:\n\n` +
+                        `📋 <b>Chat ID kamu:</b>\n` +
+                        `<code>${topBorder}\n${middle}\n${bottomBorder}</code>\n\n` +
+                        `Kirimkan angka di atas ke Owner/Admin toko kamu.\n` +
+                        `Minta mereka input di menu:\n` +
+                        `<b>Admin → Kelola Barber → [nama kamu] → Hubungkan Telegram</b>\n\n` +
+                        `Setelah terdaftar, ketik /kasir untuk mulai.`
+                    );
+                }
+                return NextResponse.json({ ok: true });
+            }
+
+            // ── Untuk command selain /daftar, wajib terdaftar ──
             const { data: barber, error: barberError } = await supabaseAdmin
                 .from('barbers')
                 .select('id, name, tenant_id')
@@ -72,9 +110,12 @@ export async function POST(request: NextRequest) {
                 .single();
 
             if (barberError || !barber) {
-                // Kapster belum terdaftar! Beri tau Chat ID nya agar owner bisa copy-paste
-                const welcomeObj = `❌ <b>Akses Ditolak</b>\n\nMaaf, akun Anda belum diizinkan untuk mengakses sistem kasir pangkas.\n\nJika Anda adalah kapster, infokan <b>Chat ID</b> Anda ini kepada Bos/Owner Anda untuk dimasukkan ke sistem:\n\nChat ID Anda: \`${chatId}\`\n\n_(Ketuk angka di atas untuk menyalin)_`;
-                await sendTelegramMessage(chatId, welcomeObj);
+                // Kapster belum terdaftar
+                await sendTelegramMessage(chatId,
+                    `❌ <b>Akses Ditolak</b>\n\n` +
+                    `Akun Telegram kamu belum terhubung ke sistem kasir.\n\n` +
+                    `Ketik /daftar untuk melihat Chat ID kamu, lalu kirimkan angkanya ke Owner/Admin toko.`
+                );
                 return NextResponse.json({ ok: true });
             }
 
@@ -124,7 +165,7 @@ export async function POST(request: NextRequest) {
                 await sendTelegramMessage(chatId, `📊 <b>Laporan Shift Anda Hari Ini</b>\n\nTotal Kepala: ${count} Pelanggan\nOmset Kasir Walk-In: ${hargaFormatted}\n\n<i>Kerja bagus, ${barber.name}!</i>`);
             } else {
                 // Perintah tidak dikenal
-                await sendTelegramMessage(chatId, "Perintah tidak dikenali. Ketik /kasir untuk buka mesin kasir.");
+                await sendTelegramMessage(chatId, `Perintah tidak dikenali.\n\nPerintah yang tersedia:\n/kasir — Buka mesin kasir\n/laporan — Lihat rekap hari ini\n/daftar — Lihat Chat ID kamu`);
             }
             return NextResponse.json({ ok: true });
         }
