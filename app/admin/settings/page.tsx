@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import WhatsAppSettingsTab from "./WhatsAppSettingsTab";
 import SubdomainSettingsTab from "./SubdomainSettingsTab";
+import { TIMEZONE_OPTIONS, getTimezoneLabel, getTimezoneOffset } from "@/lib/timezone";
 
 // Tipe Data untuk Settings
 interface TenantSettings {
@@ -24,6 +25,7 @@ interface TenantSettings {
   operating_open: string;
   operating_close: string;
   is_home_service_enabled: boolean;
+  timezone: string;
 }
 
 type TabType = 'identity' | 'appearance' | 'operational' | 'whatsapp' | 'subdomain' | 'preview';
@@ -55,7 +57,8 @@ export default function AdminSettingsPage() {
     whatsapp_owner: "",
     operating_open: "10:00",
     operating_close: "20:00",
-    is_home_service_enabled: true
+    is_home_service_enabled: true,
+    timezone: "Asia/Jakarta",
   });
 
   // Init Data
@@ -390,13 +393,38 @@ export default function AdminSettingsPage() {
                     {/* TAB 3: OPERATIONAL */}
                     {activeTab === 'operational' && (
                         <div className="space-y-6 animate-in fade-in duration-300">
+
+                             {/* ── FIELD TIMEZONE ── */}
+                             <div className="space-y-2">
+                                 <label className="block text-sm font-medium text-neutral-300">🌏 Zona Waktu Toko</label>
+                                 <select
+                                     value={settings.timezone ?? 'Asia/Jakarta'}
+                                     onChange={e => setSettings({...settings, timezone: e.target.value})}
+                                     className="w-full bg-black/40 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[var(--color-primary)] transition-colors"
+                                 >
+                                     {TIMEZONE_OPTIONS.map(tz => (
+                                         <option key={tz.value} value={tz.value}>{tz.label}</option>
+                                     ))}
+                                 </select>
+                                 <p className="text-xs text-neutral-500">
+                                     📍 Wilayah: {TIMEZONE_OPTIONS.find(t => t.value === (settings.timezone ?? 'Asia/Jakarta'))?.regions}
+                                 </p>
+                                 <p className="text-xs text-amber-500/80">
+                                     ⚠️ Semua jam operasional dan laporan akan menggunakan zona waktu ini.
+                                 </p>
+                             </div>
+
+                             <hr className="border-neutral-800" />
+
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
-                                    <label className="block text-sm font-medium text-neutral-300">Jam Buka (WIB)</label>
+                                    <label className="block text-sm font-medium text-neutral-300">
+                                        Jam Buka ({getTimezoneLabel(settings.timezone ?? 'Asia/Jakarta')} {getTimezoneOffset(settings.timezone ?? 'Asia/Jakarta')})</label>
                                     <input type="time" value={settings.operating_open} onChange={e => setSettings({...settings, operating_open: e.target.value})} className="w-full bg-black/40 border border-neutral-800 rounded-xl px-4 py-3 color-scheme-dark" />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="block text-sm font-medium text-neutral-300">Jam Tutup (WIB)</label>
+                                    <label className="block text-sm font-medium text-neutral-300">
+                                        Jam Tutup ({getTimezoneLabel(settings.timezone ?? 'Asia/Jakarta')} {getTimezoneOffset(settings.timezone ?? 'Asia/Jakarta')})</label>
                                     <input type="time" value={settings.operating_close} onChange={e => setSettings({...settings, operating_close: e.target.value})} className="w-full bg-black/40 border border-neutral-800 rounded-xl px-4 py-3 color-scheme-dark" />
                                 </div>
                             </div>

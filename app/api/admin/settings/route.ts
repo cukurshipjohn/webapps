@@ -42,11 +42,22 @@ export async function GET(request: NextRequest) {
                 whatsapp_owner: null,
                 operating_open: '10:00',
                 operating_close: '20:00',
-                is_home_service_enabled: true
+                is_home_service_enabled: true,
+                timezone: 'Asia/Jakarta',
             });
         }
 
-        return NextResponse.json(data);
+        // Juga ambil timezone dari tabel tenants
+        const { data: tenantData } = await supabaseAdmin
+            .from('tenants')
+            .select('timezone')
+            .eq('id', tenantId)
+            .single();
+
+        return NextResponse.json({
+            ...data,
+            timezone: tenantData?.timezone ?? 'Asia/Jakarta',
+        });
     } catch (error: any) {
         console.error('[Settings GET]', error);
         return NextResponse.json(
@@ -121,6 +132,19 @@ export async function PUT(request: NextRequest) {
         }
 
         if (error) throw error;
+
+        // Simpan timezone ke tabel tenants (bukan tenant_settings)
+        if (body.timezone !== undefined) {
+            const validTimezones = ['Asia/Jakarta', 'Asia/Makassar', 'Asia/Jayapura'];
+            if (!validTimezones.includes(body.timezone)) {
+                return NextResponse.json({ message: 'Timezone tidak valid.' }, { status: 400 });
+            }
+            const { error: tzError } = await supabaseAdmin
+                .from('tenants')
+                .update({ timezone: body.timezone })
+                .eq('id', tenantId);
+            if (tzError) throw tzError;
+        }
 
         return NextResponse.json({ message: 'Pengaturan berhasil disimpan.', data });
     } catch (error: any) {
