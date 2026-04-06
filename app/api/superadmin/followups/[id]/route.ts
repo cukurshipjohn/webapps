@@ -6,9 +6,10 @@ export const dynamic = 'force-dynamic'
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+      const { id } = await params
       const user = await getUserFromToken(req)
       if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       requireRole(['superadmin'], user.role)
@@ -35,7 +36,7 @@ export async function PATCH(
           note:     note ?? undefined,
           done_at:  isDone ? new Date().toISOString() : null,
         })
-        .eq('id', params.id)
+        .eq('id', id)
         .select()
         .single()
 

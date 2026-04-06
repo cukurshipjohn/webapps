@@ -6,9 +6,10 @@ export const dynamic = 'force-dynamic'
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+      const { id } = await params
       const user = await getUserFromToken(req)
       if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       requireRole(['superadmin'], user.role)
@@ -22,7 +23,7 @@ export async function POST(
           id, name,
           users!owner_user_id ( phone, name )
         `)
-        .eq('id', params.id)
+        .eq('id', id)
         .single()
 
       const ownerPhone = (tenant?.users as any)?.phone
