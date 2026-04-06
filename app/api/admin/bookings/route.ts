@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getUserFromToken, requireRole } from '@/lib/auth';
+import { dateRangeToUTC } from '@/lib/timezone';
 
 export async function GET(request: NextRequest) {
     try {
@@ -41,25 +42,34 @@ export async function GET(request: NextRequest) {
         }
 
         if (startDateParam && endDateParam) {
-            // Gunakan rentang tanggal dari request
-            // startDateParam biasanya "YYYY-MM-DD", kita set jam 00:00:00
-            const startDate = new Date(startDateParam);
-            startDate.setHours(0, 0, 0, 0);
-            
-            // endDateParam mungkin sama dengan startDate ("hari ini")
-            const endDate = new Date(endDateParam);
-            endDate.setHours(23, 59, 59, 999);
+            // STEP 1: Ambil timezone tenant
+            const { data: tenantData } = await supabaseAdmin
+                .from('tenants')
+                .select('timezone')
+                .eq('id', tenantId)
+                .single()
+            const tz = tenantData?.timezone ?? 'Asia/Jakarta'
 
-            query = query.gte('start_time', startDate.toISOString())
-                         .lte('start_time', endDate.toISOString());
+            // STEP 2: Konversi tanggal lokal ke UTC berdasarkan timezone tenant
+            const { start: fromUTC } = dateRangeToUTC(startDateParam, tz)
+            const { end: toUTC }     = dateRangeToUTC(endDateParam, tz)
+
+            query = query
+                .gte('start_time', fromUTC)
+                .lte('start_time', toUTC)
         } else if (dateFilter) {
-            // Fallback backward compatibility buat jaga-jaga kalau masih ada kode lama yg nembak `?date=`
-            const startDate = new Date(dateFilter);
-            startDate.setHours(0, 0, 0, 0);
-            const endDate = new Date(dateFilter);
-            endDate.setHours(23, 59, 59, 999);
-            query = query.gte('start_time', startDate.toISOString())
-                         .lte('start_time', endDate.toISOString());
+            // Fallback backward compatibility
+            const { data: tenantData } = await supabaseAdmin
+                .from('tenants')
+                .select('timezone')
+                .eq('id', tenantId)
+                .single()
+            const tz = tenantData?.timezone ?? 'Asia/Jakarta'
+
+            const { start: fromUTC, end: toUTC } = dateRangeToUTC(dateFilter, tz)
+            query = query
+                .gte('start_time', fromUTC)
+                .lte('start_time', toUTC)
         }
 
         const { data, error } = await query;

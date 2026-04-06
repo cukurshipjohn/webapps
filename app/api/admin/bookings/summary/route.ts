@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUserFromToken, requireRole } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
+import { dateRangeToUTC, getTimezoneLabel } from '@/lib/timezone'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,8 +26,17 @@ export async function GET(req: NextRequest) {
     { status: 400 }
   )
 
-  const fromISO = new Date(`${dateFrom}T00:00:00+07:00`).toISOString()
-  const toISO   = new Date(`${dateTo}T23:59:59+07:00`).toISOString()
+  // ─── AMBIL TIMEZONE TENANT ────────────────────
+  const { data: tenantData } = await supabaseAdmin
+    .from('tenants')
+    .select('timezone')
+    .eq('id', tenantId)
+    .single()
+  const tenantTimezone = tenantData?.timezone ?? 'Asia/Jakarta'
+
+  // ─── KONVERSI KE UTC BERDASARKAN TIMEZONE TENANT ─
+  const { start: fromISO } = dateRangeToUTC(dateFrom, tenantTimezone)
+  const { end: toISO }     = dateRangeToUTC(dateTo,   tenantTimezone)
 
   // ─── QUERY SEMUA BOOKING DI RENTANG ───────────
   const { data: bookings, error } = await supabaseAdmin
@@ -119,6 +129,10 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     periode: { dari: dateFrom, sampai: dateTo },
+    meta: {
+      timezone: tenantTimezone,
+      timezoneLabel: getTimezoneLabel(tenantTimezone),
+    },
     ringkasan: {
       totalTransaksi,
       totalPendapatan,

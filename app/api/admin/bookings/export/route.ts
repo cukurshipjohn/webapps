@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getUserFromToken, requireRole } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
 import * as XLSX from 'xlsx'
+import { dateRangeToUTC, getTimezoneLabel, getTimezoneOffset } from '@/lib/timezone'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,11 +16,11 @@ function formatRupiah(amount: number | null): string {
   }).format(amount)
 }
 
-// ─── HELPER: Format Tanggal WIB ──────────────────
-function formatDateWIB(isoString: string | null): string {
+// ─── HELPER: Format Tanggal dalam Timezone Lokal Tenant ──
+function formatDateLocal(isoString: string | null, timezone: string): string {
   if (!isoString) return '-'
   return new Date(isoString).toLocaleString('id-ID', {
-    timeZone: 'Asia/Jakarta',
+    timeZone: timezone,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -94,8 +95,21 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  const fromDate = new Date(`${dateFrom}T00:00:00+07:00`)
-  const toDate   = new Date(`${dateTo}T23:59:59+07:00`)
+  // ─── AMBIL TIMEZONE TENANT ────────────────────
+  const { data: tenantData } = await supabaseAdmin
+    .from('tenants')
+    .select('timezone')
+    .eq('id', tenantId)
+    .single()
+  const tenantTimezone  = tenantData?.timezone ?? 'Asia/Jakarta'
+  const timezoneLabel   = getTimezoneLabel(tenantTimezone)
+  const timezoneOffset  = getTimezoneOffset(tenantTimezone)
+
+  // ─── KONVERSI KE UTC BERDASARKAN TIMEZONE TENANT ─
+  const { start: fromUTC } = dateRangeToUTC(dateFrom, tenantTimezone)
+  const { end: toUTC }     = dateRangeToUTC(dateTo,   tenantTimezone)
+  const fromDate = new Date(fromUTC)
+  const toDate   = new Date(toUTC)
 
   if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
     return NextResponse.json(
@@ -145,8 +159,8 @@ export async function GET(req: NextRequest) {
       )
     `)
     .eq('tenant_id', tenantId)
-    .gte('created_at', fromDate.toISOString())
-    .lte('created_at', toDate.toISOString())
+    .gte('created_at', fromUTC)
+    .lte('created_at', toUTC)
     .order('created_at', { ascending: false })
 
   // Filter opsional
@@ -175,8 +189,8 @@ export async function GET(req: NextRequest) {
   const rows = bookings.map((b, index) => ({
     'No': index + 1,
     'ID Transaksi': b.id,
-    'Tanggal Transaksi': formatDateWIB(b.created_at),
-    'Tanggal Booking': formatDateWIB(b.scheduled_at),
+    'Tanggal Transaksi': formatDateLocal(b.created_at, tenantTimezone),
+    'Tanggal Booking': formatDateLocal(b.scheduled_at, tenantTimezone),
     'Nama Pelanggan': b.customer_name ?? '-',
     'No. HP Pelanggan': b.customer_phone ?? '-',
     'Barber': (b.barbers as any)?.name ?? '-',
@@ -220,11 +234,10 @@ export async function GET(req: NextRequest) {
       // Header baris info
       [`Laporan Transaksi CukurShip`],
       [`Periode: ${dateFrom} s/d ${dateTo}`],
+      [`Zona Waktu: ${timezoneLabel} (UTC${timezoneOffset})`],
       [`Total Transaksi Selesai: ${totalTransaksi}`],
       [`Total Pendapatan: "${formatRupiah(totalPendapatan)}"`],
-      [`Diekspor: ${new Date().toLocaleString('id-ID', { 
-        timeZone: 'Asia/Jakarta' 
-      })}`],
+      [`Diekspor: ${new Date().toLocaleString('id-ID', { timeZone: tenantTimezone })}`],
       [], // baris kosong
       headers, // header kolom
       // Data rows
@@ -269,11 +282,10 @@ export async function GET(req: NextRequest) {
       // Info baris atas
       ['Laporan Transaksi CukurShip'],
       [`Periode: ${dateFrom} s/d ${dateTo}`],
+      [`Zona Waktu: ${timezoneLabel} (UTC${timezoneOffset})`],
       [`Total Transaksi Selesai: ${totalTransaksi}`],
       [`Total Pendapatan: ${formatRupiah(totalPendapatan)}`],
-      [`Diekspor: ${new Date().toLocaleString('id-ID', { 
-        timeZone: 'Asia/Jakarta' 
-      })}`],
+      [`Diekspor: ${new Date().toLocaleString('id-ID', { timeZone: tenantTimezone })}`],
       [], // baris kosong
       Object.keys(rows[0]), // header kolom
       ...rows.map(row => Object.values(row)),
