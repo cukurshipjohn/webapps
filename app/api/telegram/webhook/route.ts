@@ -297,7 +297,8 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ ok: true });
             }
 
-            const { data: tenant } = await supabaseAdmin.from('tenants').select('plan, is_active, plan_expires_at, timezone').eq('id', barber.tenant_id).single();
+            const { data: tenantData } = await supabaseAdmin.from('tenants').select('id, plan, is_active, plan_expires_at, timezone').eq('id', barber.tenant_id).single();
+            const tenant = tenantData as any;
             const tz = tenant?.timezone ?? 'Asia/Jakarta';
 
             if (!tenant || !canUseKasir(tenant.plan || 'trial')) {
@@ -455,8 +456,13 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ ok: true });
             }
 
-            const { data: tenant } = await supabaseAdmin.from('tenants').select('plan, is_active, plan_expires_at, timezone').eq('id', barber.tenant_id).single();
-            const tz = tenant?.timezone ?? 'Asia/Jakarta';
+            const { data: tenantData } = await supabaseAdmin.from('tenants').select('id, plan, is_active, plan_expires_at, timezone').eq('id', barber.tenant_id).single();
+            const tenant = tenantData as any;
+            if (!tenant) {
+                await answerCallbackQuery(callbackId, "Toko tidak ditemukan.");
+                return NextResponse.json({ ok: true });
+            }
+            const tz = tenant.timezone ?? 'Asia/Jakarta';
 
             const session = await getSession(chatId, tenant.id);
             const ctx = session?.context as any || {};
@@ -534,8 +540,7 @@ export async function POST(request: NextRequest) {
                     await editTelegramMessage(chatId, messageId, `✏️ <b>${svc.name}</b>\n\nKetik nominal harga untuk transaksi ini.\n_(Contoh: 50000)_`);
                 } else {
                     // Fixed price: directly add to cart
-                    const resolvedPrice = resolveTransactionPrice(svc, svc.final_price, null);
-                    const cart = addToCart(ctx.cart || [], { service_id: svc.id, service_name: svc.name, price: resolvedPrice });
+                    const cart = addToCart(ctx.cart || [], { service_id: svc.id, service_name: svc.name, price: svc.final_price });
                     await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...ctx, cart });
                     
                     const cartText = formatCart(cart, tz);
