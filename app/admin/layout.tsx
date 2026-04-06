@@ -32,7 +32,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     try {
       // Decode JWT payload (tidak perlu verifikasi signature di klien)
       const payloadBase64 = token.split('.')[1];
-      const payload = JSON.parse(atob(payloadBase64));
+      let base64Standard = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
+      while (base64Standard.length % 4) {
+        base64Standard += '=';
+      }
+      const payload = JSON.parse(atob(base64Standard));
 
       // Cek apakah token sudah expired
       if (payload.exp && payload.exp * 1000 < Date.now()) {

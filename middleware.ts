@@ -86,7 +86,13 @@ export async function middleware(request: NextRequest) {
         try {
             const payloadBase64 = token.split('.')[1];
             if (!payloadBase64) throw new Error('Format token tidak valid');
-            const base64Standard = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
+            let base64Standard = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
+            
+            // Pad base64 standard string to prevent atob DOMException in Edge Runtime
+            while (base64Standard.length % 4) {
+                base64Standard += '=';
+            }
+            
             const payload = JSON.parse(atob(base64Standard));
             const userRole = payload.role || 'customer';
 
