@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { BookingSummaryPanel } from "@/components/admin/BookingSummaryPanel";
 
 interface ExportButtonProps {
   dateFrom: string;
@@ -294,6 +295,12 @@ export default function AdminBookingsPage() {
               </div>
            </div>
         </div>
+
+        {/* Summary Panel */}
+        <BookingSummaryPanel
+          dateFrom={getDateRange(dateFilterType).startDate}
+          dateTo={getDateRange(dateFilterType).endDate}
+        />
 
         {/* Table / List */}
         {loading ? (
