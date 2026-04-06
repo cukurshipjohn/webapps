@@ -401,12 +401,11 @@ export async function POST(request: NextRequest) {
 
             // ── COMMAND /start atau /kasir ──
             if (textLower === '/start' || textLower === '/kasir') {
-                // Hapus sesi lama, mulai baru
-                await clearSession(chatId, tenant.id);
-                await sendTelegramMessage(chatId, `💈 *Transaksi Baru*\n\nSiapa pelanggannya? (opsional)`, {
+                // Mulai sesi baru, default ke pencarian pelanggan. Memungkinkan user langsung mengetik nama.
+                await upsertSession(chatId, tenant.id, barber.id, 'awaiting_customer', { crm_action: 'search' });
+                await sendTelegramMessage(chatId, `💈 *Transaksi Baru*\n\nSilakan langsung <b>ketik nama / nomor HP pelanggan</b> untuk mencari riwayatnya, atau pilih opsi di bawah:`, {
                     reply_markup: {
                         inline_keyboard: [
-                            [{ text: '🔍 Cari Pelanggan Lama', callback_data: 'crm_search' }],
                             [{ text: '➕ Daftarkan Pelanggan Baru', callback_data: 'crm_new' }],
                             [{ text: '⏭️ Lewati (Pelanggan Umum)', callback_data: 'crm_skip' }],
                         ]
@@ -437,7 +436,7 @@ export async function POST(request: NextRequest) {
                     `<i>Kerja bagus, ${barber.name}!</i>`
                 );
             } else {
-                await sendTelegramMessage(chatId, `Perintah tidak dikenali.\n\nPerintah yang tersedia:\n/kasir — Buka mesin kasir\n/laporan — Lihat rekap hari ini\n/daftar — Lihat Chat ID kamu`);
+                await sendTelegramMessage(chatId, `ℹ️ Sesi transaksi tidak aktif atau perintah tidak dikenali.\n\n<b>Gunakan perintah berikut:</b>\n/kasir — 🏪 Buka transaksi baru\n/laporan — 📊 Rekap shift hari ini\n/daftar — 🔑 Lihat Chat ID`);
             }
             return NextResponse.json({ ok: true });
         }

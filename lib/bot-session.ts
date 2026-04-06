@@ -30,10 +30,16 @@ export interface BotContext {
   customer_id?:   string | null
   customer_name?: string | null
   customer_phone?: string | null
+  crm_action?:    'search' | 'new_name' | 'new_phone'
+  new_customer_name?: string
 
   // Saat awaiting_payment & confirming:
   total_price?:     number
   payment_method?:  'cash' | 'qris' | 'transfer'
+  
+  // Custom Flow states:
+  awaiting_free_input?: boolean
+  awaiting_cash_input?: boolean
 }
 
 export interface BotSession {
