@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getUserFromToken, requireRole } from '@/lib/auth';
+import { getPlanById } from '@/lib/billing-plans';
 
 export async function GET(request: NextRequest) {
     try {
@@ -33,18 +34,25 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ message: 'Akses ditolak: Anda tidak terhubung ke tenant/barbershop mana pun.' }, { status: 403 });
         }
 
-        // PLAN ENFORCEMENT: cek limit max_barbers
+        // PLAN ENFORCEMENT: cek limit max_barbers via 'plan'
         const { data: tenantData } = await supabaseAdmin
-            .from('tenants').select('max_barbers').eq('id', user.tenant_id).single();
+            .from('tenants').select('plan').eq('id', user.tenant_id).single();
+            
         const { count: currentBarbers } = await supabaseAdmin
             .from('barbers').select('*', { count: 'exact', head: true }).eq('tenant_id', user.tenant_id);
 
-        if (tenantData && typeof currentBarbers === 'number' && currentBarbers >= (tenantData.max_barbers ?? 2)) {
-            return NextResponse.json({
-                message: `Batas kapster tercapai (${tenantData.max_barbers} kapster). Upgrade plan untuk menambah lebih banyak kapster.`,
-                upgrade_required: true,
-            }, { status: 403 });
+        if (tenantData && typeof currentBarbers === 'number') {
+            const planDetails = getPlanById(tenantData.plan);
+            const maxBarbers = planDetails?.max_barbers ?? 2;
+            
+            if (currentBarbers >= maxBarbers) {
+                return NextResponse.json({
+                    message: `Batas kapster tercapai (${maxBarbers} kapster). Upgrade plan untuk menambah lebih banyak kapster.`,
+                    upgrade_required: true,
+                }, { status: 403 });
+            }
         }
+
         
         const body = await request.json();
         const { name, phone, specialty, photo_url, telegram_username, telegram_chat_id } = body;

@@ -100,16 +100,12 @@ export async function POST(request: NextRequest) {
                 billing_cycle: plan.billing_cycle,
                 plan_expires_at: periodEnd.toISOString(),
                 is_active: true,
-                // Isi jatah revisi custom subdomain dari billing-plans.ts
-                // Paket bulanan → 0, paket tahunan → sesuai plan
+                // Jatah revisi custom subdomain (kolom dari migration_14)
                 subdomain_revisions_remaining: plan.subdomain_revisions,
+                // Set max_barbers & max_bookings_per_month (kolom dari migration_08)
+                max_barbers: plan.max_barbers >= 999999 ? 999 : plan.max_barbers,
+                max_bookings_per_month: plan.max_bookings_per_month >= 999999 ? 99999 : plan.max_bookings_per_month,
             };
-
-            // Set max_barbers & max_bookings_per_month (999 = "unlimited" praktis)
-            tenantUpdate.max_barbers = plan.max_barbers >= 999999 ? 999 : plan.max_barbers;
-            tenantUpdate.max_bookings_per_month = plan.max_bookings_per_month >= 999999
-                ? 99999
-                : plan.max_bookings_per_month;
 
             const { error: tenantUpdateError } = await supabaseAdmin
                 .from('tenants')
