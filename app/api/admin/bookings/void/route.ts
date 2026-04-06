@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromToken, requireRole } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
+import { sendTelegramMessage } from "@/lib/telegram";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,19 @@ export async function GET(req: NextRequest) {
     }
 
     const tenantId = user.tenant_id;
+    
+    const { searchParams } = new URL(req.url);
+    const countOnly = searchParams.get('count_only') === 'true';
+    
+    if (countOnly) {
+      const { count } = await supabaseAdmin
+        .from('booking_voids')
+        .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .eq('status', 'pending');
+        
+      return NextResponse.json({ count: count ?? 0 });
+    }
 
     // Fetch pending voids
     const { data, error } = await supabaseAdmin
@@ -24,7 +38,7 @@ export async function GET(req: NextRequest) {
       .select(`
         id, created_at, status, reason,
         bookings (
-          id, final_price, booking_source, created_at, service_name_snapshot,
+          id, final_price, booking_source, created_at,
           services ( name, price )
         ),
         barbers (
@@ -83,6 +97,16 @@ export async function PATCH(req: NextRequest) {
     const bookings = voidReq.bookings as any;
     const bookingGroupId = bookings?.booking_group_id;
 
+    // Calculate total void value for notifications
+    let totalVoid = 0;
+    if (bookingGroupId) {
+       const { data: groupBookings } = await supabaseAdmin.from('bookings').select('final_price').eq('booking_group_id', bookingGroupId);
+       totalVoid = groupBookings?.reduce((sum, b) => sum + (Number(b.final_price) || 0), 0) || 0;
+    } else {
+       const { data: singleBooking } = await supabaseAdmin.from('bookings').select('final_price').eq('id', voidReq.booking_id).single();
+       totalVoid = Number(singleBooking?.final_price) || 0;
+    }
+
     if (action === 'approve') {
       // 1. Cancel all bookings in the group
       if (bookingGroupId) {
@@ -99,7 +123,7 @@ export async function PATCH(req: NextRequest) {
           .eq('tenant_id', tenantId);
       }
 
-      // 2. Update void request status
+      // 3. Update void request status
       await supabaseAdmin
         .from('booking_voids')
         .update({
@@ -110,7 +134,25 @@ export async function PATCH(req: NextRequest) {
         })
         .eq('id', void_id);
 
-      // (WA notification to barber omitted/handled by triggers if needed)
+      // 4. Send Telegram Notification to Barber
+      const { data: voidData } = await supabaseAdmin
+        .from('booking_voids')
+        .select('barbers!booking_voids_requested_by_fkey ( name, telegram_chat_id )')
+        .eq('id', void_id)
+        .single();
+      
+      const barberChatId = (voidData?.barbers as any)?.telegram_chat_id;
+      if (barberChatId) {
+        await sendTelegramMessage(
+          barberChatId,
+          `✅ *Permintaan Pembatalan Disetujui*\n\n` +
+          `Owner telah menyetujui pembatalan transaksi:\n` +
+          `💰 Total: Rp ${totalVoid.toLocaleString('id-ID')}\n\n` +
+          `Transaksi sudah dibatalkan dari sistem.\n` +
+          `Ketuk /kasir untuk transaksi baru.`
+        );
+      }
+
       return NextResponse.json({ message: "Void approved and bookings cancelled" });
     } 
     
@@ -125,6 +167,27 @@ export async function PATCH(req: NextRequest) {
           review_note: note || null
         })
         .eq('id', void_id);
+
+      // Send Telegram Notification to Barber
+      const { data: voidData } = await supabaseAdmin
+        .from('booking_voids')
+        .select('barbers!booking_voids_requested_by_fkey ( name, telegram_chat_id )')
+        .eq('id', void_id)
+        .single();
+      
+      const barberChatId = (voidData?.barbers as any)?.telegram_chat_id;
+      if (barberChatId) {
+        const noteText = note ? `\n📝 Alasan: _${note}_` : '';
+        await sendTelegramMessage(
+          barberChatId,
+          `❌ *Permintaan Pembatalan Ditolak*\n\n` +
+          `Owner tidak menyetujui pembatalan:\n` +
+          `💰 Total: Rp ${totalVoid.toLocaleString('id-ID')}` +
+          `${noteText}\n\n` +
+          `Transaksi tetap tercatat sebagai selesai.\n` +
+          `Hubungi owner jika ada pertanyaan.`
+        );
+      }
 
       return NextResponse.json({ message: "Void rejected" });
     }

@@ -1,74 +1,50 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
-import { getUserFromToken } from '@/lib/auth';
+import { NextRequest, NextResponse } from 'next/server'
+import { supabaseAdmin } from '@/lib/supabase'
+import { getUserFromToken, requireRole } from '@/lib/auth'
 
-export const dynamic = 'force-dynamic';
-
-// Sesuaikan dengan CHECK constraint di DB
-const VALID_OUTCOMES = [
-    'pending',
-    'no_response',
-    'interested',
-    'renewed',
-    'upgraded',
-    'churned_confirmed',
-    'not_applicable'
-] as const;
+export const dynamic = 'force-dynamic'
 
 export async function PATCH(
-    request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+  req: NextRequest,
+  { params }: { params: { id: string } }
 ) {
-    const user = getUserFromToken(request);
-    if (!user || user.role !== 'superadmin') {
-        return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
-    }
+  try {
+      const user = await getUserFromToken(req)
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      requireRole(['superadmin'], user.role)
 
-    try {
-        const { id } = await context.params;
-        if (!id) return NextResponse.json({ message: 'ID required' }, { status: 400 });
+      const body = await req.json()
+      const { outcome, note } = body
 
-        const body = await request.json();
-        const { outcome, message_sent, done_at } = body;
+      const validOutcomes = [
+        'pending','no_response','interested',
+        'renewed','upgraded','churned_confirmed','resolved'
+      ]
+      if (!validOutcomes.includes(outcome)) {
+        return NextResponse.json(
+          { error: 'Outcome tidak valid' }, { status: 400 }
+        )
+      }
 
-        let payload: any = {};
+      const isDone = outcome !== 'pending'
 
-        if (outcome !== undefined) {
-            if (!VALID_OUTCOMES.includes(outcome as any)) {
-                return NextResponse.json({ message: `outcome tidak valid. Gunakan: ${VALID_OUTCOMES.join(', ')}` }, { status: 400 });
-            }
-            payload.outcome = outcome;
+      const { data, error } = await supabaseAdmin
+        .from('superadmin_followups')
+        .update({
+          outcome,
+          note:     note ?? undefined,
+          done_at:  isDone ? new Date().toISOString() : null,
+        })
+        .eq('id', params.id)
+        .select()
+        .single()
 
-            if (outcome !== 'pending' && done_at === undefined) {
-                payload.done_at = new Date().toISOString();
-            }
-        }
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 })
+      }
 
-        if (message_sent !== undefined) payload.message_sent = message_sent;
-        if (done_at !== undefined) payload.done_at = done_at;
-
-        if (Object.keys(payload).length === 0) {
-            return NextResponse.json({ message: 'Tidak ada data valid untuk diupdate' }, { status: 400 });
-        }
-
-        const { data: updated, error } = await supabaseAdmin
-            .from('superadmin_followups')
-            .update(payload)
-            .eq('id', id)
-            .select('id, outcome, done_at')
-            .single();
-
-        if (error) {
-            if (error.code === 'PGRST116') {
-                return NextResponse.json({ message: 'Follow-up tidak ditemukan' }, { status: 404 });
-            }
-            throw error;
-        }
-
-        return NextResponse.json({ success: true, updated });
-
-    } catch (err: any) {
-        console.error('[Followups PATCH] Error:', err);
-        return NextResponse.json({ message: err.message || 'Internal Server Error' }, { status: 500 });
-    }
+      return NextResponse.json({ data })
+  } catch (err: any) {
+      return NextResponse.json({ error: err.message }, { status: 403 })
+  }
 }

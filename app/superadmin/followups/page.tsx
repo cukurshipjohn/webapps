@@ -1,278 +1,297 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 
-export const dynamic = 'force-dynamic';
+interface FollowUpItem {
+    id: string;
+    case_type: string;
+    channel: string;
+    note: string | null;
+    outcome: string;
+    scheduled_at: string | null;
+    done_at: string | null;
+    created_at: string;
+    updated_at: string;
+    tenants?: { id: string; name: string; slug: string };
+    users?: { name: string }; // Admin yang merekam
+}
 
-function Toast({ msg, isError, onClose }: { msg: string, isError?: boolean, onClose: () => void }) {
-    useEffect(() => {
-        const timer = setTimeout(onClose, 4000);
-        return () => clearTimeout(timer);
-    }, [onClose]);
+function MiniKPI({ label, value, color = 'default' }: { label: string, value: string | number, color?: 'default' | 'success' | 'error' | 'primary' }) {
+    const colorClasses = {
+        default: "text-white",
+        success: "text-green-500",
+        error: "text-red-500",
+        primary: "text-cyan-400"
+    };
+
+    const bgHighlight = {
+        default: "bg-neutral-800 border-neutral-700",
+        success: "bg-green-500/10 border-green-500/30",
+        error: "bg-red-500/10 border-red-500/30",
+        primary: "bg-cyan-500/10 border-cyan-500/30"
+    };
+
     return (
-        <div className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl border shadow-xl flex items-center gap-3 transition-all animate-fade-in-up ${isError ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-green-500/10 border-green-500/20 text-green-400'}`}>
-            <span className="text-lg">{isError ? '❌' : '✅'}</span>
-            <p className="font-medium text-sm">{msg}</p>
+        <div className={`p-4 rounded-xl border ${bgHighlight[color]}`}>
+            <p className="text-xs text-neutral-400 font-medium tracking-wide mb-1 opacity-80">{label}</p>
+            <p className={`text-2xl font-bold ${colorClasses[color]}`}>{value}</p>
         </div>
     );
 }
 
-const OUTCOME_OPTIONS = [
-    { value: 'pending', label: 'Pending' },
-    { value: 'no_response', label: 'Tidak Respons' },
-    { value: 'interested', label: 'Tertarik' },
-    { value: 'renewed', label: 'Diperpanjang' },
-    { value: 'churned_confirmed', label: 'Konfirmasi Churn' }
-];
-
-function FollowupsContent() {
+export default function SuperadminFollowUps() {
     const router = useRouter();
-    const searchParams = useSearchParams();
-
-    const [followups, setFollowups] = useState<any[]>([]);
+    const [followups, setFollowups] = useState<FollowUpItem[]>([]);
     const [loading, setLoading] = useState(true);
-    
-    const [filterCaseType, setFilterCaseType] = useState('all');
-    const [filterOutcome, setFilterOutcome] = useState('all');
-    const [filterSearch, setFilterSearch] = useState('');
+    const [page, setPage] = useState(1);
+    const PER_PAGE = 20;
 
-    const [updatingId, setUpdatingId] = useState<string | null>(null);
-    const [toast, setToast] = useState<{ msg: string, isError?: boolean } | null>(null);
+    // Filter states
+    const [filterCase, setFilterCase] = useState("");
+    const [filterOutcome, setFilterOutcome] = useState("");
+    const [dateFrom, setDateFrom] = useState("");
+    const [dateTo, setDateTo] = useState("");
 
-    const getToken = () => window.localStorage.getItem('superadmin_token');
+    const getToken = useCallback(() => localStorage.getItem("superadmin_token"), []);
 
-    const fetchData = useCallback(async () => {
+    const fetchHistory = useCallback(async () => {
         const token = getToken();
-        if (!token) { router.push('/superadmin/login'); return; }
-
+        if(!token) { router.push("/superadmin/login"); return; }
         setLoading(true);
         try {
             const params = new URLSearchParams();
-            const tenantIdParams = searchParams?.get('tenant_id');
-            const caseTypeParams = searchParams?.get('case_type');
-            const outcomeParams = searchParams?.get('outcome');
-            
-            if (tenantIdParams) params.append('tenant_id', tenantIdParams);
-            if (caseTypeParams) params.append('case_type', caseTypeParams);
-            if (outcomeParams) params.append('outcome', outcomeParams);
-            
-            params.append('limit', '200'); // Higher limit for client-side filtering support
+            // Fetch relatively large dataset for KPI processing and pagination
+            params.set("limit", "500");
+            if(filterCase) params.set("case_type", filterCase);
+            if(filterOutcome) params.set("outcome", filterOutcome);
+            if(dateFrom) params.set("start_date", dateFrom);
+            if(dateTo) params.set("end_date", dateTo);
 
             const res = await fetch(`/api/superadmin/followups?${params.toString()}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            if (res.status === 401 || res.status === 403) { router.push('/superadmin/login'); return; }
-            if (!res.ok) throw new Error('Gagal mengambil data follow-up');
-
+            if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
             const data = await res.json();
-            setFollowups(data.followups || []);
-            
-            // set initial filters if from url
-            if (caseTypeParams && VALID_CASES.includes(caseTypeParams)) setFilterCaseType(caseTypeParams);
-            if (outcomeParams) setFilterOutcome(outcomeParams);
-
-        } catch (err: any) {
-            setToast({ msg: err.message, isError: true });
+            setFollowups(data.data || []);
+            setPage(1); // reset pagination when fetching
+        } catch (error) {
+            console.error(error);
         } finally {
             setLoading(false);
         }
-    }, [router, searchParams]);
+    }, [getToken, router, filterCase, filterOutcome, dateFrom, dateTo]);
 
     useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+        fetchHistory();
+    }, [fetchHistory]);
 
-    const handleUpdateOutcome = async (id: string, newOutcome: string) => {
-        const token = getToken();
-        if (!token) return;
+    const resetFilters = () => {
+        setFilterCase("");
+        setFilterOutcome("");
+        setDateFrom("");
+        setDateTo("");
+    }
 
-        // Optimistic UI Update setup if desired, but we'll wait for server first to be safe
-        setUpdatingId(id);
-        
-        try {
-            const res = await fetch(`/api/superadmin/followups/${id}`, {
-                method: 'PATCH',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}` 
-                },
-                body: JSON.stringify({ outcome: newOutcome })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Gagal update status');
+    // Process Stats
+    const stats = useMemo(() => {
+        const total = followups.length;
+        const renewed = followups.filter(f => f.outcome === 'renewed' || f.outcome === 'upgraded').length;
+        const churned = followups.filter(f => f.outcome === 'churned_confirmed').length;
+        const conversionRate = total > 0 ? ((renewed / total) * 100).toFixed(1) : 0;
+        return { total, renewed, churned, conversionRate };
+    }, [followups]);
 
-            // local state update
-            setFollowups(prev => prev.map(f => f.id === id ? { ...f, outcome: newOutcome, done_at: data.updated.done_at } : f));
-            setToast({ msg: 'Status berhasil diperbarui ✅' });
+    // Pagination slice
+    const paginatedItems = useMemo(() => {
+        const start = (page - 1) * PER_PAGE;
+        return followups.slice(start, start + PER_PAGE);
+    }, [followups, page]);
 
-        } catch (err: any) {
-            setToast({ msg: err.message, isError: true });
-        } finally {
-            setUpdatingId(null);
-        }
-    };
-
-    const VALID_CASES = ['renewal', 'usage_check', 'churn', 'upgrade_offer', 'custom'];
-
-    const filteredData = followups.filter(f => {
-        if (filterCaseType !== 'all' && f.case_type !== filterCaseType) return false;
-        if (filterOutcome !== 'all' && f.outcome !== filterOutcome) return false;
-        if (filterSearch) {
-            const sn = f.shop_name?.toLowerCase() || '';
-            const ds = filterSearch.toLowerCase();
-            if (!sn.includes(ds)) return false;
-        }
-        return true;
-    });
+    const totalPages = Math.ceil(followups.length / PER_PAGE);
 
     return (
         <div className="space-y-6 max-w-7xl mx-auto">
-            {toast && <Toast msg={toast.msg} isError={toast.isError} onClose={() => setToast(null)} />}
-
-            {/* HEADER BAR */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <h1 className="text-2xl font-bold text-white">Riwayat Follow-up</h1>
-                <Link href="/superadmin/pipeline" className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium rounded-lg flex items-center gap-2 transition-colors">
-                    <span>←</span> Pipeline
-                </Link>
+            {/* Header */}
+            <div>
+                <h1 className="text-2xl font-bold text-white">Riwayat Follow-Up</h1>
+                <p className="text-sm text-neutral-500 mt-1">
+                    Histori interaksi komunikasi, pencatatan hasil, dan pelacakan komitmen tenant.
+                </p>
             </div>
 
-            {/* FILTER BAR */}
-            <div className="flex flex-col sm:flex-row gap-4 bg-neutral-900/60 p-4 rounded-xl border border-neutral-800">
-                <input 
-                    type="text" 
-                    placeholder="Cari nama toko..." 
-                    value={filterSearch} 
-                    onChange={e => setFilterSearch(e.target.value)}
-                    className="flex-1 bg-neutral-900 text-white px-3 py-2 border border-neutral-700 rounded-lg text-sm focus:border-cyan-500 outline-none"
-                />
+            {/* Filter Bar */}
+            <div className="bg-[#071120] p-4 rounded-2xl border border-cyan-900/30 flex flex-wrap gap-4 items-end">
+                <div className="flex-1 min-w-[200px]">
+                    <label className="text-[11px] uppercase tracking-wider text-neutral-500 font-bold mb-2 block">Tipe Validasi</label>
+                    <select value={filterCase} onChange={(e) => setFilterCase(e.target.value)} 
+                        className="w-full bg-[#0a1526] border border-cyan-900/40 text-white text-sm rounded-lg px-3 py-2 focus:border-cyan-500 focus:outline-none">
+                        <option value="">Semua Tipe</option>
+                        <option value="renewal">Renewal (Perpanjangan)</option>
+                        <option value="usage_check">Cek Aktivitas Pasif</option>
+                        <option value="churn">Konfirmasi Churn</option>
+                        <option value="upgrade_offer">Penawaran Upgrade</option>
+                        <option value="onboarding">Onboarding Awal</option>
+                        <option value="custom">Catatan Custom</option>
+                    </select>
+                </div>
                 
-                <select value={filterCaseType} onChange={e => setFilterCaseType(e.target.value)} className="flex-1 bg-neutral-900 text-white px-3 py-2 border border-neutral-700 rounded-lg text-sm focus:border-cyan-500 outline-none">
-                    <option value="all">Semua Jenis Kasus</option>
-                    <option value="renewal_reminder">Pengingat Perpanjangan</option>
-                    <option value="usage_coaching">Cek Penggunaan</option>
-                    <option value="churn_prevention">Pencegahan Churn</option>
-                    <option value="reactivation_offer">Penawaran Reaktivasi</option>
-                    <option value="upgrade_offer">Penawaran Upgrade</option>
-                    <option value="general">Lainnya</option>
-                </select>
+                <div className="flex-1 min-w-[200px]">
+                    <label className="text-[11px] uppercase tracking-wider text-neutral-500 font-bold mb-2 block">Capaian (Outcome)</label>
+                    <select value={filterOutcome} onChange={(e) => setFilterOutcome(e.target.value)} 
+                        className="w-full bg-[#0a1526] border border-cyan-900/40 text-white text-sm rounded-lg px-3 py-2 focus:border-cyan-500 focus:outline-none">
+                        <option value="">Semua Capaian</option>
+                        <option value="pending">Pending</option>
+                        <option value="renewed">Berhasil Perpanjang</option>
+                        <option value="upgraded">Berhasil Upgrade</option>
+                        <option value="interested">Tertarik (Interested)</option>
+                        <option value="churned_confirmed">Churn Terkonfirmasi</option>
+                        <option value="no_response">Tak Ada Respons</option>
+                        <option value="resolved">Terselesaikan (Lainnya)</option>
+                    </select>
+                </div>
 
-                <select value={filterOutcome} onChange={e => setFilterOutcome(e.target.value)} className="flex-1 bg-neutral-900 text-white px-3 py-2 border border-neutral-700 rounded-lg text-sm focus:border-cyan-500 outline-none">
-                    <option value="all">Semua Status</option>
-                    <option value="pending">Pending</option>
-                    <option value="interested">Tertarik</option>
-                    <option value="renewed">Diperpanjang</option>
-                    <option value="churned_confirmed">Konfirmasi Churn</option>
-                    <option value="no_response">Tidak Respons</option>
-                </select>
+                <div>
+                    <label className="text-[11px] uppercase tracking-wider text-neutral-500 font-bold mb-2 block">Mulai Tanggal</label>
+                    <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                        className="w-full bg-[#0a1526] border border-cyan-900/40 text-white text-sm rounded-lg px-3 py-2 focus:border-cyan-500 focus:outline-shadow" />
+                </div>
+                
+                <div>
+                    <label className="text-[11px] uppercase tracking-wider text-neutral-500 font-bold mb-2 block">Akhir Tanggal</label>
+                    <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                        className="w-full bg-[#0a1526] border border-cyan-900/40 text-white text-sm rounded-lg px-3 py-2 focus:border-cyan-500 focus:outline-shadow" />
+                </div>
+
+                <div className="flex pb-0.5 mt-2 lg:mt-0">
+                    <button onClick={resetFilters}
+                        className="px-4 py-2 border border-neutral-700 text-neutral-400 hover:bg-neutral-800 hover:text-white rounded-lg text-sm transition-all font-medium whitespace-nowrap">
+                        ↺ Reset
+                    </button>
+                    <button onClick={fetchHistory} title="Refresh API Data"
+                        className="ml-2 px-3 py-2 bg-cyan-600/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-lg transition-all flex items-center justify-center">
+                        🔄
+                    </button>
+                </div>
             </div>
 
-            {/* TABLE / EMPTY STATE */}
-            {loading ? (
-                <div className="text-center py-20 text-neutral-500">Memuat data riwayat follow-up...</div>
-            ) : followups.length === 0 ? (
-                <div className="bg-neutral-900/60 border border-neutral-800 rounded-xl p-16 flex flex-col items-center justify-center text-center">
-                    <div className="text-5xl mb-4">📋</div>
-                    <h3 className="text-lg font-bold text-white mb-2">Belum ada riwayat follow-up.</h3>
-                    <p className="text-neutral-400 mb-6 text-sm">Mulai dari halaman Pipeline untuk mencatat follow-up tenant.</p>
-                    <Link href="/superadmin/pipeline" className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-lg transition-colors">
-                        Buka Pipeline
-                    </Link>
-                </div>
-            ) : (
-                <div className="bg-neutral-900/60 border border-neutral-800 rounded-xl overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                        <thead className="bg-neutral-900 text-neutral-400 border-b border-neutral-800">
-                            <tr>
-                                <th className="px-4 py-3 font-medium">Toko</th>
-                                <th className="px-4 py-3 font-medium">Tanggal</th>
-                                <th className="px-4 py-3 font-medium">Kasus</th>
-                                <th className="px-4 py-3 font-medium">Saluran</th>
-                                <th className="px-4 py-3 font-medium max-w-[200px]">Catatan</th>
-                                <th className="px-4 py-3 font-medium">Jadwal</th>
-                                <th className="px-4 py-3 font-medium w-48">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredData.length === 0 ? (
-                                <tr><td colSpan={7} className="px-4 py-8 text-center text-neutral-500">Tidak ada riwayat yang sesuai filter.</td></tr>
-                            ) : filteredData.map(f => (
-                                <tr key={f.id} className="border-b border-neutral-800/50 hover:bg-neutral-800/30">
-                                    <td className="px-4 py-3">
-                                        <Link href={`/superadmin/pipeline?tenant=${f.tenant_id}`} className="font-semibold text-cyan-500 hover:text-cyan-400">
-                                            {f.shop_name || 'Toko N/A'}
-                                        </Link>
-                                    </td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-neutral-300">
-                                        {new Date(f.created_at).toLocaleDateString('id-ID', {
-                                            day: '2-digit', month: 'short', year: 'numeric'
-                                        })} <br/>
-                                        <span className="text-xs text-neutral-500">{new Date(f.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</span>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <span className={`px-2 py-1 text-[10px] font-bold uppercase rounded border ${
-                                            f.case_type === 'renewal_reminder' ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' :
-                                            f.case_type === 'usage_coaching' ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' :
-                                            f.case_type === 'churn_prevention' ? 'bg-red-500/10 border-red-500/20 text-red-400' :
-                                            f.case_type === 'reactivation_offer' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
-                                            f.case_type === 'upgrade_offer' ? 'bg-green-500/10 border-green-500/20 text-green-400' :
-                                            'bg-neutral-500/10 border-neutral-500/20 text-neutral-400'
-                                        }`}>
-                                            {f.case_type.replace(/_/g, ' ')}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3 whitespace-nowrap">
-                                        {f.channel === 'whatsapp' ? '📱 WhatsApp' : 
-                                         f.channel === 'phone_call' ? '📞 Telepon' : 
-                                         '📋 Catatan Internal'}
-                                    </td>
-                                    <td className="px-4 py-3 max-w-[200px]">
-                                        <div title={f.message_sent || ''} className="truncate text-neutral-400 cursor-help">
-                                            {f.message_sent || <span className="italic text-neutral-600">Kosong</span>}
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-neutral-400">
-                                        {f.scheduled_at ? new Date(f.scheduled_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) : '-'}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center gap-2">
-                                            <select 
-                                                value={f.outcome}
-                                                onChange={e => handleUpdateOutcome(f.id, e.target.value)}
-                                                disabled={updatingId === f.id}
-                                                className={`text-xs px-2 py-1.5 rounded outline-none border focus:border-cyan-500 transition-colors w-full cursor-pointer appearance-none ${
-                                                    f.outcome === 'pending' ? 'bg-neutral-800 text-neutral-400 border-neutral-700' :
-                                                    f.outcome === 'no_response' ? 'bg-pink-500/10 text-pink-400 border-pink-500/30' :
-                                                    f.outcome === 'interested' ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30' :
-                                                    f.outcome === 'renewed' ? 'bg-green-500/10 text-green-400 border-green-500/30' :
-                                                    'bg-red-900/30 text-red-400 border-red-500/30'
-                                                } ${updatingId === f.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                            >
-                                                {OUTCOME_OPTIONS.map(opt => (
-                                                    <option key={opt.value} value={opt.value} className="bg-neutral-800 text-white">
-                                                        {opt.label}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            {updatingId === f.id && <div className="w-3 h-3 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin flex-shrink-0"></div>}
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            )}
-        </div>
-    );
-}
+            {/* Statistik Ringkas */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <MiniKPI label="TOTAL FOLLOW-UP" value={stats.total} />
+                <MiniKPI label="BERHASIL PERPANJANG" value={stats.renewed} color="success" />
+                <MiniKPI label="CHURN TERKONFIRMASI" value={stats.churned} color="error" />
+                <MiniKPI label="CONVERSION RATE" value={`${stats.conversionRate}%`} color="primary" />
+            </div>
 
-export default function FollowupsPage() {
-    return (
-        <Suspense fallback={<div className="text-center py-20 text-neutral-500">Memuat antarmuka...</div>}>
-            <FollowupsContent />
-        </Suspense>
+            {/* Layout Table */}
+            <div className="bg-[#071120] border border-cyan-900/30 rounded-2xl overflow-hidden shadow-2xl">
+                <div className="overflow-x-auto min-h-[400px]">
+                    {loading ? (
+                       <div className="flex items-center justify-center py-20 text-cyan-500">
+                           <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+                       </div>
+                    ) : followups.length === 0 ? (
+                        <div className="text-center py-24 text-neutral-500">
+                           <span className="text-4xl block mb-4">📭</span>
+                           <p>Belum ada riwayat temuan log / aktivitas.</p>
+                       </div>
+                    ) : (
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-[#0a1526] text-neutral-400">
+                                <tr className="border-b border-cyan-900/40">
+                                    <th className="px-5 py-3 font-medium">Tenant</th>
+                                    <th className="px-5 py-3 font-medium">Tipe Pelaporan</th>
+                                    <th className="px-5 py-3 font-medium">Channel</th>
+                                    <th className="px-5 py-3 font-medium max-w-[200px]">Catatan Eksekutor</th>
+                                    <th className="px-5 py-3 font-medium">Outcome Hasil</th>
+                                    <th className="px-5 py-3 font-medium text-right">Penjadwalan</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {paginatedItems.map((item) => {
+                                    const cDate = new Date(item.created_at).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" });
+                                    const dDate = item.done_at ? new Date(item.done_at).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" }) : "—";
+                                    
+                                    const outcomeStyles: any = {
+                                        pending: "bg-neutral-800 text-neutral-400 border-neutral-700",
+                                        renewed: "bg-green-500/10 text-green-400 border-green-500/30",
+                                        upgraded: "bg-green-500/10 text-green-400 border-green-500/30",
+                                        interested: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+                                        churned_confirmed: "bg-rose-500/10 text-rose-500 border-rose-500/30",
+                                        no_response: "bg-amber-500/10 text-amber-500 border-amber-500/30",
+                                        resolved: "bg-cyan-500/10 text-cyan-400 border-cyan-500/30",
+                                    };
+                                    
+                                    const truncateText = (str: string, len: number) => {
+                                        if(!str) return <em className="text-neutral-600">Tidak ada</em>;
+                                        return str.length > len ? str.substring(0, len) + "..." : str;
+                                    }
+
+                                    return (
+                                        <tr key={item.id} className="border-b border-cyan-900/20 hover:bg-white/5 transition-colors group">
+                                            <td className="px-5 py-4">
+                                                <p className="text-white font-bold mb-0.5">{item.tenants?.name || 'Tenant Dihapus'}</p>
+                                                {item.tenants?.slug && (
+                                                    <span className="text-[10px] text-cyan-400/50 bg-cyan-900/20 px-2 py-0.5 rounded-full font-mono">
+                                                        {item.tenants?.slug}
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#0a1526] border border-cyan-900/50 rounded-lg">
+                                                    <span className="text-xs uppercase font-bold text-cyan-400/80">{item.case_type.replace('_', ' ')}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-5 py-4 text-xs font-mono text-neutral-400">
+                                                {item.channel}
+                                            </td>
+                                            <td className="px-5 py-4 max-w-[200px]" title={item.note || ''}>
+                                                <p className="text-xs text-neutral-300 truncate">
+                                                    {truncateText(item.note || '', 80)}
+                                                </p>
+                                                <p className="text-[10px] text-neutral-500 mt-1">oleh {item.users?.name || 'Admin'}</p>
+                                            </td>
+                                            <td className="px-5 py-4">
+                                                <span className={`text-[10px] px-2.5 py-1 font-bold uppercase rounded-lg border ${outcomeStyles[item.outcome] || outcomeStyles.pending}`}>
+                                                    {item.outcome}
+                                                </span>
+                                            </td>
+                                            <td className="px-5 py-4 text-right">
+                                                <p className="text-xs text-neutral-300">Buat: {cDate}</p>
+                                                <p className="text-[11px] text-neutral-500 mt-0.5">Selesai: {dDate}</p>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+
+                {/* Pagination (Client-side over loaded items) */}
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-between px-5 py-4 border-t border-cyan-900/30 bg-[#0a1526]">
+                        <p className="text-xs text-neutral-500">
+                            Menampilkan data {(page-1)*PER_PAGE + 1} s.d. {Math.min(page*PER_PAGE, followups.length)} dari {followups.length}
+                        </p>
+                        <div className="flex gap-2">
+                            <button 
+                                disabled={page === 1} onClick={() => setPage(p => p - 1)}
+                                className="px-3 py-1 text-xs border border-neutral-700 text-neutral-300 rounded hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-transparent">
+                                Mundur
+                            </button>
+                            <span className="px-3 py-1 text-xs flex items-center font-bold text-cyan-400 bg-cyan-900/20 rounded">
+                                {page}
+                            </span>
+                            <button 
+                                disabled={page === totalPages} onClick={() => setPage(p => p + 1)}
+                                className="px-3 py-1 text-xs border border-neutral-700 text-neutral-300 rounded hover:bg-neutral-800 disabled:opacity-30 disabled:hover:bg-transparent">
+                                Maju
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
     );
 }

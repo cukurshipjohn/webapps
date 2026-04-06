@@ -116,16 +116,18 @@ export function dateRangeToUTC(
     'Asia/Jayapura': 9,
   }
   const offsetHours = offsetMap[timezone] ?? 7
+  const offsetMs    = offsetHours * 60 * 60 * 1000
 
-  const startLocal = new Date(`${dateStr}T00:00:00`)
-  const endLocal   = new Date(`${dateStr}T23:59:59`)
+  // Parse sebagai UTC MIDNIGHT, lalu geser ke 
+  // awal dan akhir hari di timezone tenant
+  const utcMidnight = new Date(`${dateStr}T00:00:00.000Z`)
 
-  // Konversi ke UTC
-  const startUTC = new Date(
-    startLocal.getTime() - offsetHours * 60 * 60 * 1000
-  )
+  // Start = UTC midnight dikurangi offset tenant
+  const startUTC = new Date(utcMidnight.getTime() - offsetMs)
+
+  // End = UTC midnight + 24 jam - 1 detik - offset tenant
   const endUTC = new Date(
-    endLocal.getTime() - offsetHours * 60 * 60 * 1000
+    utcMidnight.getTime() + (24 * 60 * 60 * 1000 - 1000) - offsetMs
   )
 
   return {
@@ -183,4 +185,19 @@ export function formatReceiptDateTime(
   })
 
   return `${tanggal}, ${jam} ${label}`
+}
+
+if (process.env.NODE_ENV === 'test') {
+  // Verifikasi manual:
+  // dateRangeToUTC('2026-04-06', 'Asia/Jakarta')
+  // start -> '2026-04-05T17:00:00.000Z' ✅ (UTC+7)
+  // end   -> '2026-04-06T16:59:59.000Z' ✅
+
+  // dateRangeToUTC('2026-04-06', 'Asia/Makassar')
+  // start -> '2026-04-05T16:00:00.000Z' ✅ (UTC+8)
+  // end   -> '2026-04-06T15:59:59.000Z' ✅
+
+  // dateRangeToUTC('2026-04-06', 'Asia/Jayapura')
+  // start -> '2026-04-05T15:00:00.000Z' ✅ (UTC+9)
+  // end   -> '2026-04-06T14:59:59.000Z' ✅
 }

@@ -1,125 +1,96 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
-import { getUserFromToken } from '@/lib/auth';
+import { NextRequest, NextResponse } from 'next/server'
+import { supabaseAdmin } from '@/lib/supabase'
+import { getUserFromToken, requireRole } from '@/lib/auth'
 
-export const dynamic = 'force-dynamic';
+export const dynamic = 'force-dynamic'
 
-// Sesuaikan dengan CHECK constraint di DB
-const VALID_CASE_TYPES = [
-    'renewal_reminder',
-    'usage_coaching',
-    'churn_prevention',
-    'reactivation_offer',
-    'upgrade_offer',
-    'general'
-] as const;
+export async function GET(req: NextRequest) {
+  try {
+      const user = await getUserFromToken(req)
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      requireRole(['superadmin'], user.role)
 
-const VALID_CHANNELS = ['whatsapp', 'phone_call', 'internal_note'] as const;
+      const { searchParams } = new URL(req.url)
+      const tenantId  = searchParams.get('tenant_id')
+      const caseType  = searchParams.get('case_type')
+      const outcome   = searchParams.get('outcome')
+      const startDate = searchParams.get('start_date')
+      const endDate   = searchParams.get('end_date')
+      const limit     = parseInt(searchParams.get('limit') ?? '100') // naikkan default dlm batas wajar
 
-export async function GET(request: NextRequest) {
-    const user = getUserFromToken(request);
-    if (!user || user.role !== 'superadmin') {
-        return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
-    }
+      let query = supabaseAdmin
+        .from('superadmin_followups')
+        .select(`
+          id, case_type, channel, note, 
+          outcome, scheduled_at, done_at,
+          created_at, updated_at,
+          tenants ( id, name, slug ),
+          users!admin_id ( name )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(limit)
 
-    try {
-        const { searchParams } = new URL(request.url);
-        const tenantId = searchParams.get('tenant_id');
-        const caseType = searchParams.get('case_type');
-        const outcome = searchParams.get('outcome');
-        const limitStr = searchParams.get('limit') || '50';
-        let limit = parseInt(limitStr, 10);
-        if (isNaN(limit) || limit <= 0) limit = 50;
-        if (limit > 200) limit = 200;
+      if (tenantId) query = query.eq('tenant_id', tenantId)
+      if (caseType) query = query.eq('case_type', caseType)
+      if (outcome)  query = query.eq('outcome', outcome)
+      if (startDate) query = query.gte('created_at', startDate)
+      if (endDate) {
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          query = query.lte('created_at', end.toISOString())
+      }
 
-        let query = supabaseAdmin
-            .from('superadmin_followups')
-            .select('*, tenants!inner(shop_name, slug)')
-            .order('created_at', { ascending: false })
-            .limit(limit);
+      const { data, error } = await query
 
-        if (tenantId) query = query.eq('tenant_id', tenantId);
-        if (caseType) query = query.eq('case_type', caseType);
-        if (outcome) query = query.eq('outcome', outcome);
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 })
+      }
 
-        const { data, error } = await query;
-        if (error) throw error;
-
-        const formatted = (data || []).map(f => ({
-            id: f.id,
-            tenant_id: f.tenant_id,
-            shop_name: (f.tenants as any)?.shop_name,
-            slug: (f.tenants as any)?.slug,
-            case_type: f.case_type,
-            channel: f.channel,
-            message_sent: f.message_sent,   // kolom aktual di DB
-            outcome: f.outcome,
-            scheduled_at: f.scheduled_at,
-            done_at: f.done_at,
-            created_at: f.created_at
-        }));
-
-        return NextResponse.json({ followups: formatted });
-    } catch (err: any) {
-        console.error('[Followups GET] Error:', err);
-        return NextResponse.json({ message: err.message || 'Internal Server Error' }, { status: 500 });
-    }
+      return NextResponse.json({ data })
+  } catch (err: any) {
+      return NextResponse.json({ error: err.message }, { status: 403 })
+  }
 }
 
-export async function POST(request: NextRequest) {
-    const user = getUserFromToken(request);
-    if (!user || user.role !== 'superadmin') {
-        return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
-    }
+export async function POST(req: NextRequest) {
+  try {
+      const user = await getUserFromToken(req)
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      requireRole(['superadmin'], user.role)
 
-    try {
-        const body = await request.json();
-        const { tenant_id, case_type, channel, message_sent, outcome, scheduled_at } = body;
+      const body = await req.json()
+      const { 
+        tenant_id, case_type, channel, 
+        note, scheduled_at 
+      } = body
 
-        if (!tenant_id) return NextResponse.json({ message: 'tenant_id wajib diisi' }, { status: 400 });
-        if (!case_type || !VALID_CASE_TYPES.includes(case_type as any)) {
-            return NextResponse.json({ message: `case_type tidak valid. Gunakan: ${VALID_CASE_TYPES.join(', ')}` }, { status: 400 });
-        }
-        if (!channel || !VALID_CHANNELS.includes(channel as any)) {
-            return NextResponse.json({ message: `channel tidak valid. Gunakan: ${VALID_CHANNELS.join(', ')}` }, { status: 400 });
-        }
+      if (!tenant_id || !case_type || !channel) {
+        return NextResponse.json(
+          { error: 'tenant_id, case_type, channel wajib diisi' },
+          { status: 400 }
+        )
+      }
 
-        const { data: tenantCheck, error: tcErr } = await supabaseAdmin
-            .from('tenants')
-            .select('id')
-            .eq('id', tenant_id)
-            .single();
+      const { data, error } = await supabaseAdmin
+        .from('superadmin_followups')
+        .insert({
+          tenant_id,
+          admin_id:     user.userId,
+          case_type,
+          channel,
+          note:         note ?? null,
+          outcome:      'pending',
+          scheduled_at: scheduled_at ?? null,
+        })
+        .select()
+        .single()
 
-        if (tcErr || !tenantCheck) {
-            return NextResponse.json({ message: 'Tenant tidak valid atau tidak ditemukan' }, { status: 400 });
-        }
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 })
+      }
 
-        const admin_id = user.userId;
-        const finalOutcome = outcome || 'pending';
-
-        const payload: any = {
-            tenant_id,
-            admin_id,
-            case_type,
-            channel,
-            message_sent: message_sent || null,   // kolom aktual di DB (nullable)
-            outcome: finalOutcome
-        };
-
-        if (scheduled_at) payload.scheduled_at = scheduled_at;
-        if (finalOutcome !== 'pending') payload.done_at = new Date().toISOString();
-
-        const { data: followup, error: insertErr } = await supabaseAdmin
-            .from('superadmin_followups')
-            .insert(payload)
-            .select('*')
-            .single();
-
-        if (insertErr) throw insertErr;
-
-        return NextResponse.json({ success: true, followup }, { status: 201 });
-    } catch (err: any) {
-        console.error('[Followups POST] Error:', err);
-        return NextResponse.json({ message: err.message || 'Internal Server Error' }, { status: 500 });
-    }
+      return NextResponse.json({ data }, { status: 201 })
+  } catch (err: any) {
+      return NextResponse.json({ error: err.message }, { status: 403 })
+  }
 }

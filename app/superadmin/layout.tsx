@@ -3,10 +3,15 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
+interface PipelineSummary {
+    expiring_soon: number;
+    churned: number;
+}
+
 const navLinks = [
     { name: "Overview",   href: "/superadmin",             icon: "📡", exact: true },
     { name: "Semua Toko", href: "/superadmin/tenants",     icon: "🏪", exact: false },
-    { name: "Pipeline",   href: "/superadmin/pipeline",    icon: "🎯", exact: true },
+    { name: "Pipeline",   href: "/superadmin/pipeline",    icon: "🎯", exact: true, hasBadge: true },
     { name: "Follow-up",  href: "/superadmin/followups",   icon: "📋", exact: false },
     { name: "Affiliates", href: "/superadmin/affiliates",  icon: "👥", exact: false },
     { name: "WhatsApp",   href: "/superadmin/whatsapp",    icon: "💬", exact: false },
@@ -18,9 +23,22 @@ export default function SuperadminLayout({ children }: { children: React.ReactNo
     const pathname = usePathname();
     const router = useRouter();
     const [mobileOpen, setMobileOpen] = useState(false);
+    const [summary, setSummary] = useState<PipelineSummary | null>(null);
 
     useEffect(() => {
         document.title = 'CukurShip | Super Admin';
+        
+        // Fetch pipeline summary once on mount
+        const token = localStorage.getItem("superadmin_token");
+        if (token) {
+            fetch('/api/superadmin/pipeline', {
+                headers: { Authorization: `Bearer ${token}` }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.summary) setSummary(data.summary);
+            }).catch(e => console.error("Failed to load pipeline summary", e));
+        }
     }, []);
 
     const handleLogout = () => {
@@ -50,15 +68,23 @@ export default function SuperadminLayout({ children }: { children: React.ReactNo
                 <nav className="flex-1 py-5 px-3 space-y-1">
                     {navLinks.map(link => {
                         const isActive = link.exact ? pathname === link.href : pathname?.startsWith(link.href);
+                        const badgeCount = link.hasBadge && summary ? (summary.expiring_soon + summary.churned) : 0;
                         return (
                             <Link key={link.name} href={link.href}
-                                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all
+                                className={`flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-medium transition-all
                                     ${isActive
                                         ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
                                         : "text-neutral-400 hover:text-white hover:bg-white/5 border border-transparent"
                                     }`}>
-                                <span className="text-base opacity-80">{link.icon}</span>
-                                {link.name}
+                                <div className="flex items-center gap-3">
+                                    <span className="text-base opacity-80">{link.icon}</span>
+                                    {link.name}
+                                </div>
+                                {badgeCount > 0 && (
+                                    <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                        {badgeCount}
+                                    </span>
+                                )}
                             </Link>
                         );
                     })}

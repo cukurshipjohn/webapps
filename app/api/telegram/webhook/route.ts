@@ -421,7 +421,7 @@ export async function POST(request: NextRequest) {
                     .select('final_price, services(price)')
                     .eq('tenant_id', tenant.id)
                     .eq('barber_id', barber.id)
-                    .eq('booking_source', 'pos_kasir')
+                    .in('booking_source', ['pos_kasir', 'telegram_walk_in'])
                     .eq('status', 'completed')
                     .gte('created_at', startUTC)
                     .lte('created_at', endUTC);

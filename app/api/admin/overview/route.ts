@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getUserFromToken, requireRole } from '@/lib/auth';
+import { dateRangeToUTC, getTodayInTZ } from '@/lib/timezone';
 
 export async function GET(request: NextRequest) {
     try {
@@ -8,37 +9,49 @@ export async function GET(request: NextRequest) {
         if (!user) return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
         requireRole(['owner', 'superadmin'], user.role);
         
-        // --- 1. DateTime Calculation for Asia/Jakarta ---
-        const now = new Date();
-        const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
-        const [y, m, d] = fmt.split('-');
-        
-        // Start Today
-        const startOfTodayWIB = new Date(`${y}-${m}-${d}T00:00:00.000+07:00`);
-        const endOfTodayWIB = new Date(`${y}-${m}-${d}T23:59:59.999+07:00`);
+        const tenantId = user.tenant_id!;
+
+        // --- 1. Fetch Tenant Timezone ---
+        const { data: tenantData } = await supabaseAdmin
+            .from('tenants')
+            .select('timezone')
+            .eq('id', tenantId)
+            .single();
+        const tenantTimezone = tenantData?.timezone ?? 'Asia/Jakarta';
+
+        // --- 2. DateTime Calculation for Tenant Timezone ---
+        const todayStr = getTodayInTZ(tenantTimezone);
+        const { start: todayStart, end: todayEnd } = dateRangeToUTC(todayStr, tenantTimezone);
+
+        const [y, m, d] = todayStr.split('-');
         
         // Start Month
         const daysInMon = new Date(parseInt(y), parseInt(m), 0).getDate();
-        const startOfMonthWIB = new Date(`${y}-${m}-01T00:00:00.000+07:00`);
-        const endOfMonthWIB = new Date(`${y}-${m}-${daysInMon}T23:59:59.999+07:00`);
+        const startOfMonthStr = `${y}-${m}-01`;
+        const endOfMonthStr = `${y}-${m}-${String(daysInMon).padStart(2, '0')}`;
+        const { start: monthStart } = dateRangeToUTC(startOfMonthStr, tenantTimezone);
+        const { end: monthEnd } = dateRangeToUTC(endOfMonthStr, tenantTimezone);
         
         // Start Week (Senin ke Minggu)
-        const dummyDate = new Date(`${y}-${m}-${d}T00:00:00.000Z`); // dummy utc math
+        const dummyDate = new Date(`${todayStr}T00:00:00.000Z`); // dummy utc math
         const dayOfWeek = dummyDate.getUTCDay(); // 0(Ming)=7, 1(Sen)=1
         const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
         const startOfWeekDummy = new Date(dummyDate.getTime() - diff * 24 * 60 * 60 * 1000);
         const w_y = startOfWeekDummy.getUTCFullYear();
         const w_m = String(startOfWeekDummy.getUTCMonth() + 1).padStart(2, '0');
         const w_d = String(startOfWeekDummy.getUTCDate()).padStart(2, '0');
-        const startOfWeekWIB = new Date(`${w_y}-${w_m}-${w_d}T00:00:00.000+07:00`);
-        // Let's get Sunday end of week
+        const startOfWeekStr = `${w_y}-${w_m}-${w_d}`;
+        const { start: weekStart } = dateRangeToUTC(startOfWeekStr, tenantTimezone);
+
+        // Sunday end of week
         const endOfWeekDummy = new Date(startOfWeekDummy.getTime() + 6 * 24 * 60 * 60 * 1000);
         const ew_y = endOfWeekDummy.getUTCFullYear();
         const ew_m = String(endOfWeekDummy.getUTCMonth() + 1).padStart(2, '0');
         const ew_d = String(endOfWeekDummy.getUTCDate()).padStart(2, '0');
-        const endOfWeekWIB = new Date(`${ew_y}-${ew_m}-${ew_d}T23:59:59.999+07:00`);
+        const endOfWeekStr = `${ew_y}-${ew_m}-${ew_d}`;
+        const { end: weekEnd } = dateRangeToUTC(endOfWeekStr, tenantTimezone);
         
-        const tenantId = user.tenant_id!;
+        const now = new Date();
 
         // --- 2. Parallel Supabase Queries (tenant-isolated with explicit .eq) ---
         const bookingsPromises = [
@@ -46,29 +59,29 @@ export async function GET(request: NextRequest) {
             supabaseAdmin.from('bookings').select('id', { count: 'exact', head: true })
                 .eq('tenant_id', tenantId)
                 .in('status', ['confirmed', 'completed'])
-                .gte('start_time', startOfTodayWIB.toISOString())
-                .lte('start_time', endOfTodayWIB.toISOString()),
+                .gte('start_time', todayStart)
+                .lte('start_time', todayEnd),
                 
             // [1] Total Bookings This Week
             supabaseAdmin.from('bookings').select('id', { count: 'exact', head: true })
                 .eq('tenant_id', tenantId)
                 .in('status', ['confirmed', 'completed'])
-                .gte('start_time', startOfWeekWIB.toISOString())
-                .lte('start_time', endOfWeekWIB.toISOString()),
+                .gte('start_time', weekStart)
+                .lte('start_time', weekEnd),
 
             // [2] Revenue Today (Completed only)
             supabaseAdmin.from('bookings').select('final_price, payment_method, booking_source, services(price)')
                 .eq('tenant_id', tenantId)
                 .eq('status', 'completed')
-                .gte('start_time', startOfTodayWIB.toISOString())
-                .lte('start_time', endOfTodayWIB.toISOString()),
+                .gte('start_time', todayStart)
+                .lte('start_time', todayEnd),
 
             // [3] Revenue This Month (Completed only)
             supabaseAdmin.from('bookings').select('final_price, services(price)')
                 .eq('tenant_id', tenantId)
                 .eq('status', 'completed')
-                .gte('start_time', startOfMonthWIB.toISOString())
-                .lte('start_time', endOfMonthWIB.toISOString()),
+                .gte('start_time', monthStart)
+                .lte('start_time', monthEnd),
 
             // [4] Active Barbers
             supabaseAdmin.from('barbers').select('id', { count: 'exact', head: true })
@@ -153,6 +166,10 @@ export async function GET(request: NextRequest) {
             logo_url: (tenantInfo?.tenant_settings as any)?.[0]?.logo_url 
                         || (tenantInfo?.tenant_settings as any)?.logo_url 
                         || null,
+            meta: {
+                timezone: tenantTimezone,
+                date: todayStr,
+            }
         };
         
         return NextResponse.json(responseData);

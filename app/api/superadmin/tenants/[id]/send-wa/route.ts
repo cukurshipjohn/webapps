@@ -1,158 +1,105 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
-import { getUserFromToken } from '@/lib/auth';
+import { NextRequest, NextResponse } from 'next/server'
+import { supabaseAdmin } from '@/lib/supabase'
+import { getUserFromToken, requireRole } from '@/lib/auth'
 
-export const dynamic = 'force-dynamic';
-
-// Sesuaikan dengan CHECK constraint di DB (case_type di superadmin_followups)
-const VALID_CASE_TYPES = [
-    'renewal_reminder',
-    'usage_coaching',
-    'churn_prevention',
-    'reactivation_offer',
-    'upgrade_offer',
-    'general'
-] as const;
+export const dynamic = 'force-dynamic'
 
 export async function POST(
-    request: NextRequest,
-    context: { params: Promise<{ id: string }> }
+  req: NextRequest,
+  { params }: { params: { id: string } }
 ) {
-    const user = getUserFromToken(request);
-    if (!user || user.role !== 'superadmin') {
-        return NextResponse.json({ message: 'Unauthorized' }, { status: 403 });
-    }
+  try {
+      const user = await getUserFromToken(req)
+      if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      requireRole(['superadmin'], user.role)
 
-    try {
-        const { id } = await context.params;
-        if (!id) return NextResponse.json({ message: 'ID required' }, { status: 400 });
+      const body = await req.json()
+      const { message, template, followup_id } = body
 
-        const body = await request.json();
-        const { case_type, custom_note } = body;
+      const { data: tenant } = await supabaseAdmin
+        .from('tenants')
+        .select(`
+          id, name,
+          users!owner_user_id ( phone, name )
+        `)
+        .eq('id', params.id)
+        .single()
 
-        if (!case_type || !VALID_CASE_TYPES.includes(case_type)) {
-            return NextResponse.json({ message: `case_type tidak valid. Gunakan: ${VALID_CASE_TYPES.join(', ')}` }, { status: 400 });
-        }
-        if (case_type === 'general' && !custom_note) {
-            return NextResponse.json({ message: 'custom_note wajib ada untuk tipe general' }, { status: 400 });
-        }
+      const ownerPhone = (tenant?.users as any)?.phone
+      if (!ownerPhone) {
+        return NextResponse.json(
+          { error: 'Nomor HP owner tidak ditemukan' },
+          { status: 404 }
+        )
+      }
 
-        // LANGKAH 1 — Ambil data tenant + owner phone
-        const { data: tenant, error: tenantErr } = await supabaseAdmin
-            .from('tenants')
-            .select('*, users!owner_user_id(phone_number, id)')
-            .eq('id', id)
-            .single();
+      const waServiceUrl = process.env.WHATSAPP_SERVICE_URL
+      if (!waServiceUrl) {
+        return NextResponse.json(
+          { error: 'WA service tidak dikonfigurasi' },
+          { status: 500 }
+        )
+      }
 
-        if (tenantErr || !tenant) {
-            return NextResponse.json({ message: 'Tenant tidak ditemukan' }, { status: 404 });
-        }
+      const finalMessage = message ?? getWATemplate(template, tenant?.name ?? '')
 
-        const ownerPhone = (tenant.users as any)?.phone_number;
-        if (!ownerPhone) {
-            return NextResponse.json({ message: 'Owner tidak memiliki nomor telepon' }, { status: 400 });
-        }
+      const waResponse = await fetch(`${waServiceUrl}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone:   ownerPhone,
+          message: finalMessage,
+        }),
+      })
 
-        // LANGKAH 2 — Buat pesan berdasarkan case_type
-        let pesanTemplate = '';
-        const shopName = tenant.shop_name || 'Kakak';
+      if (!waResponse.ok) {
+        return NextResponse.json({ error: 'Gagal kirim WA' }, { status: 502 })
+      }
 
-        if (case_type === 'renewal_reminder') {
-            let daysUntilExpiry = 0;
-            if (tenant.plan_expires_at) {
-                daysUntilExpiry = Math.ceil((new Date(tenant.plan_expires_at).getTime() - Date.now()) / 86400000);
-            }
-            pesanTemplate = `Halo kak ${shopName} 👋\nLangganan CukurShip Anda akan berakhir dalam ${daysUntilExpiry} hari.\nPerpanjang sekarang agar toko tetap aktif:\nhttps://cukurship.id/admin/billing\nButuh bantuan? Balas pesan ini 😊`;
-        } else if (case_type === 'usage_coaching') {
-            pesanTemplate = `Halo kak ${shopName} 👋\nKami perhatikan aktivitas toko Anda belum maksimal.\nAda yang bisa kami bantu? Kami siap mendampingi setup CukurShip.\nBalas pesan ini atau hubungi support kami 🙏`;
-        } else if (case_type === 'churn_prevention') {
-            pesanTemplate = `Halo kak ${shopName} 👋\nKami lihat langganan Anda akan segera berakhir. Yuk, kami bantu 😊\nAda yang bisa kami perbaiki? Balas pesan ini untuk info lebih lanjut.`;
-        } else if (case_type === 'reactivation_offer') {
-            pesanTemplate = `Halo kak ${shopName} 👋\nKami rindu! Langganan Anda sudah berakhir.\nAda penawaran khusus reaktivasi untuk Anda hari ini.\nBalas pesan ini untuk info lebih lanjut.`;
-        } else if (case_type === 'upgrade_offer') {
-            pesanTemplate = `Halo kak ${shopName} 👋\nAnda bisa upgrade ke paket lebih tinggi dan dapatkan fitur tambahan.\nCek pilihan paket di: https://cukurship.id/admin/billing\nAda pertanyaan? Balas pesan ini 😊`;
-        } else if (case_type === 'general') {
-            pesanTemplate = custom_note;
-        }
+      if (followup_id) {
+        await supabaseAdmin
+          .from('superadmin_followups')
+          .update({
+            channel:  'whatsapp',
+            outcome:  'pending',
+            note:     `WA terkirim: ${finalMessage.substring(0, 100)}...`,
+            done_at:  null,
+          })
+          .eq('id', followup_id)
+      }
 
-        let messageSent = false;
-        let waErrorMsg = null;
+      return NextResponse.json({ success: true })
+  } catch (err: any) {
+      return NextResponse.json({ error: err.message }, { status: 403 })
+  }
+}
 
-        // LANGKAH 3 — Kirim ke WA gateway
-        // Pola IDENTIK dengan request-otp yang sudah terbukti jalan
-        let waUrl = process.env.WHATSAPP_SERVICE_URL;
-        const waSecret = process.env.WHATSAPP_SERVICE_SECRET;
+function getWATemplate(template: string, tenantName: string): string {
+  const templates: Record<string, string> = {
+    renewal_7:
+      `Halo Kak, kami dari CukurShip 👋\n\n` +
+      `Langganan *${tenantName}* akan berakhir dalam ` +
+      `*7 hari lagi*. Perpanjang sekarang agar barbershop ` +
+      `terus berjalan tanpa gangguan 🔄\n\n` +
+      `Klik di sini untuk perpanjang: [link]`,
 
-        if (waUrl && waSecret) {
-            if (!waUrl.startsWith('http')) waUrl = `https://${waUrl}`;
-            try {
-                const waResponse = await fetch(`${waUrl}/send-message`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': waSecret,  // TANPA 'Bearer' — sama persis dengan request-otp
-                    },
-                    body: JSON.stringify({
-                        phoneNumber: ownerPhone,   // key sama dengan request-otp
-                        message: pesanTemplate
-                    }),
-                    signal: AbortSignal.timeout(8000),  // timeout 8 detik
-                });
+    renewal_3:
+      `⚠️ Halo Kak, *MENDESAK!*\n\n` +
+      `Langganan *${tenantName}* tinggal *3 hari lagi*. ` +
+      `Segera perpanjang sebelum akses dinonaktifkan 🚨\n\n` +
+      `Perpanjang sekarang: [link]`,
 
-                if (waResponse.ok) {
-                    messageSent = true;
-                } else {
-                    const errBody = await waResponse.json().catch(() => ({}));
-                    waErrorMsg = errBody.message || `WA Gateway returned HTTP ${waResponse.status}`;
-                    console.warn(`[Send-WA] WA gagal (${ownerPhone}): ${waErrorMsg}`);
-                }
-            } catch (err: any) {
-                waErrorMsg = err.message || 'WA Gateway tidak dapat dijangkau (timeout/network)';
-                console.error('[Send-WA] Exception:', waErrorMsg);
-            }
-        } else {
-            waErrorMsg = 'WHATSAPP_SERVICE_URL atau WHATSAPP_SERVICE_SECRET belum dikonfigurasi';
-            console.warn(`[Send-WA] ${waErrorMsg}`);
-        }
+    usage_check:
+      `Halo Kak 👋 Kami perhatikan *${tenantName}* ` +
+      `belum aktif mencatat transaksi beberapa hari ini.\n\n` +
+      `Ada yang bisa kami bantu? Kami siap membantu ` +
+      `jika ada kendala penggunaan CukurShip 🙏`,
 
-        // LANGKAH 4 — Catat otomatis ke superadmin_followups
-        // Kolom aktual: message_sent (bukan note), channel hanya whatsapp/phone_call/internal_note
-        const { data: followup, error: insertErr } = await supabaseAdmin
-            .from('superadmin_followups')
-            .insert({
-                tenant_id: id,
-                admin_id: user.userId,
-                case_type,
-                channel: 'whatsapp',
-                message_sent: pesanTemplate,   // gunakan kolom yang benar
-                outcome: 'pending'
-            })
-            .select('id')
-            .single();
+    reactivation:
+      `Halo Kak, kami kangen *${tenantName}* 😊\n\n` +
+      `Kami punya penawaran spesial untuk reaktivasi. ` +
+      `Tertarik? Balas pesan ini atau klik: [link]`,
+  }
 
-        if (insertErr) {
-            console.error('[Send-WA] Error:', insertErr);
-            throw insertErr;
-        }
-
-        // LANGKAH 5 — Return response
-        if (!messageSent) {
-            return NextResponse.json({
-                success: true,
-                message_sent: false,
-                followup_id: followup.id,
-                wa_error: waErrorMsg
-            }, { status: 200 });
-        }
-
-        return NextResponse.json({
-            success: true,
-            message_sent: true,
-            followup_id: followup.id
-        }, { status: 200 });
-
-    } catch (err: any) {
-        console.error('[Send-WA] Error:', err);
-        return NextResponse.json({ message: err.message || 'Internal Server Error' }, { status: 500 });
-    }
+  return templates[template] ?? `Halo dari CukurShip! Ada yang bisa kami bantu?`
 }

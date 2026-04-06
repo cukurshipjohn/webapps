@@ -63,10 +63,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, []);
 
   useEffect(() => {
-    fetch("/api/admin/bookings/void")
-      .then(r => r.json())
+    const token = localStorage.getItem('token');
+    fetch("/api/admin/bookings/void?count_only=true", {
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    })
+      .then(r => {
+        if (!r.ok) return;
+        return r.json();
+      })
       .then(d => {
-        if (d.data) setPendingVoids(d.data.length);
+        if (d) setPendingVoids(d?.count ?? 0);
       })
       .catch(() => {});
   }, []);
