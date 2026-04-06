@@ -314,13 +314,13 @@ export async function POST(request: NextRequest) {
 
                 const { data: todayBookings } = await supabaseAdmin
                     .from('bookings')
-                    .select('services(price)')
+                    .select('final_price, services(price)')
                     .eq('barber_id', barber.id)
-                    .eq('booking_source', 'telegram_walk_in')
+                    .eq('booking_source', 'pos_kasir')
                     .gte('created_at', startOfDay.toISOString());
 
                 const count = todayBookings?.length || 0;
-                const total = todayBookings?.reduce((sum, b: any) => sum + (b.services?.price || 0), 0) || 0;
+                const total = todayBookings?.reduce((sum, b: any) => sum + (b.final_price ?? b.services?.price ?? 0), 0) || 0;
 
                 await sendTelegramMessage(chatId,
                     `📊 <b>Laporan Shift Anda Hari Ini</b>\n\n` +
