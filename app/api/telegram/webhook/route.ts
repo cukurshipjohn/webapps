@@ -7,6 +7,18 @@ const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 // ── Format harga IDR ──
 const formatIDR = (n: number) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n);
+const formatRupiah = (n: number) => new Intl.NumberFormat('id-ID').format(n);
+
+// Helper Resolusi Harga Transaksi
+function resolveTransactionPrice(
+  service: any,
+  priceOverride: number | null,
+  userInputPrice: number | null
+): number {
+  if (userInputPrice !== null && userInputPrice > 0) return userInputPrice;
+  if (priceOverride !== null && priceOverride > 0) return priceOverride;
+  return service.price || 0;
+}
 
 // Helpers untuk menghubungi Telegram API
 async function sendTelegramMessage(chatId: string | number, text: string, replyMarkup?: any) {
@@ -238,19 +250,21 @@ export async function POST(request: NextRequest) {
                         return NextResponse.json({ ok: true });
                     }
 
-                    // Tampilkan konfirmasi
+                    // Tampilkan konfirmasi BAGIAN 3
+                    const confirmMessage = `✅ <b>KONFIRMASI TRANSAKSI</b>\n\n` +
+                        `👤 Pelanggan: Umum\n` +
+                        `💈 Barber: ${barber?.name || 'Kapster'}\n` +
+                        `📋 Layanan: ${service.name}\n` +
+                        `💰 Harga: Rp ${formatRupiah(amount)}\n` +
+                        `💳 Bayar: Cash\n\n` +
+                        `[✅ Simpan Transaksi] atau [❌ Batal] ?`;
+
                     const inline_keyboard = [
-                        [{ text: "✅ Konfirmasi Simpan", callback_data: `range_confirm_${serviceId}_${amount}` }],
-                        [{ text: "❌ Batalkan", callback_data: `range_cancel_${serviceId}` }]
+                        [{ text: "✅ Simpan Transaksi", callback_data: `pos_insert_${serviceId}_${amount}` }],
+                        [{ text: "❌ Batalkan", callback_data: `cancel_pos` }]
                     ];
 
-                    await sendTelegramMessage(chatId,
-                        `🧾 <b>Konfirmasi Transaksi</b>\n\n` +
-                        `Layanan: <b>${service.name}</b>\n` +
-                        `Nominal Input: <b>${formatIDR(amount)}</b>\n\n` +
-                        `Simpan transaksi ini?`,
-                        { inline_keyboard }
-                    );
+                    await sendTelegramMessage(chatId, confirmMessage, { inline_keyboard });
                     return NextResponse.json({ ok: true });
                 }
             }
@@ -371,6 +385,43 @@ export async function POST(request: NextRequest) {
                     return NextResponse.json({ ok: true });
                 }
 
+                // Tampilkan konfirmasi BAGIAN 3
+                const confirmMessage = `✅ <b>KONFIRMASI TRANSAKSI</b>\n\n` +
+                    `👤 Pelanggan: Umum\n` +
+                    `💈 Barber: ${barber.name}\n` +
+                    `📋 Layanan: ${service.name}\n` +
+                    `💰 Harga: Rp ${formatRupiah(finalPrice)}\n` +
+                    `💳 Bayar: Cash\n\n` +
+                    `[✅ Simpan Transaksi] atau [❌ Batal] ?`;
+
+                const inline_keyboard = [
+                    [{ text: "✅ Simpan Transaksi", callback_data: `pos_insert_${serviceId}_${finalPrice}` }],
+                    [{ text: "❌ Batalkan", callback_data: `cancel_pos` }]
+                ];
+
+                await editTelegramMessage(chatId, messageId, confirmMessage, { inline_keyboard });
+                await answerCallbackQuery(callbackId);
+                return NextResponse.json({ ok: true });
+            }
+
+            // ── EKSEKUSI INSERT TRANSAKSI KASIR (FIXED & RANGE & CUSTOM) ──
+            if (data.startsWith('pos_insert_')) {
+                const parts = data.replace('pos_insert_', '').split('_');
+                const serviceId = parts[0];
+                const resolvedPrice = parseInt(parts[1], 10);
+
+                const { data: service } = await supabaseAdmin
+                    .from('services')
+                    .select('id, name, duration_minutes')
+                    .eq('id', serviceId)
+                    .single();
+
+                if (!service) {
+                    await editTelegramMessage(chatId, messageId, "Layanan tidak ditemukan.");
+                    await answerCallbackQuery(callbackId);
+                    return NextResponse.json({ ok: true });
+                }
+
                 // Insert booking with custom price
                 const startTime = new Date();
                 const endTime = new Date(startTime.getTime() + ((service.duration_minutes || 30) * 60000));
@@ -385,20 +436,27 @@ export async function POST(request: NextRequest) {
                         start_time: startTime.toISOString(),
                         end_time: endTime.toISOString(),
                         status: 'completed',
-                        booking_source: 'telegram_walk_in',
-                        payment_status: 'paid_cash'
+                        booking_source: 'pos_kasir',
+                        payment_status: 'paid_cash',
+                        final_price: resolvedPrice,
+                        payment_method: 'cash'
                     });
 
                 if (insertError) {
                     await editTelegramMessage(chatId, messageId, `❌ Gagal menyimpan: ${insertError.message}`);
                 } else {
-                    await editTelegramMessage(chatId, messageId,
-                        `✅ <b>Kasir Sukses!</b>\n\n` +
-                        `📌 Layanan: ${service.name}\n` +
-                        `💰 Harga: ${formatIDR(finalPrice)}\n` +
-                        `👤 Kapster: ${barber.name}\n` +
-                        `🕒 Waktu: ${startTime.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB`
-                    );
+                    const cashChange = 0; // if payment logic has change in future
+                    const receiptMessage = `🧾 <b>TRANSAKSI TERSIMPAN</b>\n` +
+                        `━━━━━━━━━━━━━━━━━━━━\n` +
+                        `${service.name.padEnd(20)} Rp ${formatRupiah(resolvedPrice)}\n` +
+                        `━━━━━━━━━━━━━━━━━━━━\n` +
+                        `<b>TOTAL: Rp ${formatRupiah(resolvedPrice)}</b>\n` +
+                        `Metode: Cash\n` +
+                        `${cashChange > 0 ? `Kembalian: Rp ${formatRupiah(cashChange)}\n` : ''}` +
+                        `━━━━━━━━━━━━━━━━━━━━\n` +
+                        `Terima kasih! 💈`;
+                        
+                    await editTelegramMessage(chatId, messageId, receiptMessage);
                 }
                 await answerCallbackQuery(callbackId);
                 return NextResponse.json({ ok: true });
@@ -534,37 +592,23 @@ export async function POST(request: NextRequest) {
                     return NextResponse.json({ ok: true });
                 }
 
-                // ── Handle price_type = 'fixed' (default) → langsung insert ──
-                const finalPrice = svc.final_price;
+                // ── Handle price_type = 'fixed' (default) → tampilkan konfirmasi ──
+                const resolvedPrice = resolveTransactionPrice(svc, svc.final_price, null);
 
-                const startTime = new Date();
-                const endTime = new Date(startTime.getTime() + ((svc.duration_minutes || 30) * 60000));
+                const confirmMessage = `✅ <b>KONFIRMASI TRANSAKSI</b>\n\n` +
+                    `👤 Pelanggan: Umum\n` +
+                    `💈 Barber: ${barber.name}\n` +
+                    `📋 Layanan: ${svc.name}\n` +
+                    `💰 Harga: Rp ${formatRupiah(resolvedPrice)}\n` +
+                    `💳 Bayar: Cash\n\n` +
+                    `[✅ Simpan Transaksi] atau [❌ Batal] ?`;
 
-                const { error: insertError } = await supabaseAdmin
-                    .from('bookings')
-                    .insert({
-                        tenant_id: barber.tenant_id,
-                        barber_id: barber.id,
-                        service_id: svc.id,
-                        service_type: SERVICE_TYPES.POS_KASIR,
-                        start_time: startTime.toISOString(),
-                        end_time: endTime.toISOString(),
-                        status: 'completed',
-                        booking_source: 'telegram_walk_in',
-                        payment_status: 'paid_cash'
-                    });
+                const inline_keyboard = [
+                    [{ text: "✅ Simpan Transaksi", callback_data: `pos_insert_${svc.id}_${resolvedPrice}` }],
+                    [{ text: "❌ Batalkan", callback_data: `cancel_pos` }]
+                ];
 
-                if (insertError) {
-                    await editTelegramMessage(chatId, messageId, `❌ Gagal menyimpan transaksi: ${insertError.message}`);
-                } else {
-                    await editTelegramMessage(chatId, messageId,
-                        `✅ <b>Kasir Sukses!</b>\n\n` +
-                        `📌 Layanan: ${svc.name}\n` +
-                        `💰 Uang Masuk Laci: ${formatIDR(finalPrice)}\n` +
-                        `👤 Kapster: ${barber.name}\n` +
-                        `🕒 Waktu: ${startTime.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB`
-                    );
-                }
+                await editTelegramMessage(chatId, messageId, confirmMessage, { inline_keyboard });
             }
 
             await answerCallbackQuery(callbackId);
