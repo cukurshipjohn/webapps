@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BookingSummaryPanel } from "@/components/admin/BookingSummaryPanel";
+import { formatInTZ, getTimezoneLabel } from "@/lib/timezone";
 
 interface ExportButtonProps {
   dateFrom: string;
@@ -100,6 +101,17 @@ export default function AdminBookingsPage() {
 
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
+
+  // Timezone tenant
+  const [tenantTimezone, setTenantTimezone] = useState<string>('Asia/Jakarta');
+
+  // Ambil timezone dari settings tenant
+  useEffect(() => {
+    fetch('/api/admin/settings')
+      .then(r => r.json())
+      .then(d => { if (d?.timezone) setTenantTimezone(d.timezone); })
+      .catch(() => {}); // fallback WIB
+  }, []);
 
   // Fungsi pembantu untuk mendapatkan rentang tanggal
   const getDateRange = (type: string) => {
@@ -200,7 +212,18 @@ export default function AdminBookingsPage() {
   };
 
   const formatTime = (isoString: string) => {
-    return new Date(isoString).toLocaleTimeString("id-ID", { hour: '2-digit', minute: '2-digit' });
+    return new Date(isoString).toLocaleTimeString("id-ID", {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: tenantTimezone,
+    });
+  };
+
+  const formatDate = (isoString: string) => {
+    return new Date(isoString).toLocaleDateString("id-ID", {
+      day: '2-digit', month: 'short', year: 'numeric',
+      timeZone: tenantTimezone,
+    });
   };
 
   const getStatusBadge = (status: string) => {
@@ -302,6 +325,18 @@ export default function AdminBookingsPage() {
           dateTo={getDateRange(dateFilterType).endDate}
         />
 
+        {/* Badge Zona Waktu */}
+        <div className="flex items-center gap-2 text-xs text-neutral-500 mb-3 mt-1 px-1">
+          <span>🕐</span>
+          <span>
+            Semua waktu dalam{' '}
+            <strong className="text-neutral-300">{getTimezoneLabel(tenantTimezone)}</strong>
+            {' '}({tenantTimezone === 'Asia/Jakarta' ? 'UTC+7' :
+                   tenantTimezone === 'Asia/Makassar' ? 'UTC+8' :
+                   'UTC+9'})
+          </span>
+        </div>
+
         {/* Table / List */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
@@ -330,7 +365,7 @@ export default function AdminBookingsPage() {
                   {/* Waktu & Tipe */}
                   <div className="flex-shrink-0 flex flex-col md:w-32 items-start md:items-center text-left md:text-center md:border-r border-neutral-800/50 pr-4">
                      <span className="text-xs text-neutral-400 font-semibold mb-1">
-                       {new Date(booking.start_time).toLocaleDateString("id-ID", { day: '2-digit', month: 'short', year: 'numeric' })}
+                       {formatDate(booking.start_time)}
                      </span>
                      <span className="text-primary font-bold text-2xl tracking-tighter">{formatTime(booking.start_time)}</span>
                      <span className="text-xs text-neutral-500 mb-2">s/d {formatTime(booking.end_time)}</span>
