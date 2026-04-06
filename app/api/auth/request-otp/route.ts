@@ -14,6 +14,18 @@ export async function POST(request: Request) {
             return NextResponse.json({ message: 'Nomor HP diperlukan.' }, { status: 400 });
         }
         
+        // --- MIDTRANS REVIEW BYPASS (MAGIC OTP) ---
+        // TODO: Ubah NEXT_PUBLIC_REVIEW_BYPASS_ENABLED menjadi 'false' di Vercel Auth setelah disetujui
+        const isBypassEnabled = process.env.NEXT_PUBLIC_REVIEW_BYPASS_ENABLED === 'true';
+        if (isBypassEnabled && phoneNumber === '08111111111') {
+            return NextResponse.json({
+                success: true,
+                wa_sent: true,
+                message: 'Kode OTP telah dikirim (Bypass Mode Aktif)',
+            });
+        }
+        // --- END MIDTRANS REVIEW BYPASS ---
+        
         // Strict Admin Portal Check: Prevent sending OTP if not an admin
         if (isAdminLogin) {
             // Bypass khusus superadmin: jika nomor ada di env SUPERADMIN_PHONE,

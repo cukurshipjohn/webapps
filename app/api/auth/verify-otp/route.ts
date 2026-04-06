@@ -16,29 +16,37 @@ export async function POST(request: NextRequest) {
         // Baca tenant context dari middleware header
         const { tenantId } = getTenantFromRequest(request);
 
-        // 1. Cek OTP di Supabase — harus cocok, belum expired, belum dipakai
-        const { data: sessions, error: fetchError } = await supabaseAdmin
-            .from('otp_sessions')
-            .select('*')
-            .eq('phone_number', phoneNumber)
-            .eq('otp_code', otpCode)
-            .eq('used', false)
-            .gt('expires_at', new Date().toISOString())
-            .limit(1);
+        // --- MIDTRANS REVIEW BYPASS (MAGIC OTP) ---
+        // TODO: Ubah NEXT_PUBLIC_REVIEW_BYPASS_ENABLED menjadi 'false' di Vercel Auth setelah disetujui
+        const isBypassEnabled = process.env.NEXT_PUBLIC_REVIEW_BYPASS_ENABLED === 'true';
+        const isMagicOtp = isBypassEnabled && phoneNumber === '08111111111' && otpCode === '123456';
 
-        if (fetchError) throw fetchError;
+        if (!isMagicOtp) {
+            // 1. Cek OTP di Supabase — harus cocok, belum expired, belum dipakai
+            const { data: sessions, error: fetchError } = await supabaseAdmin
+                .from('otp_sessions')
+                .select('*')
+                .eq('phone_number', phoneNumber)
+                .eq('otp_code', otpCode)
+                .eq('used', false)
+                .gt('expires_at', new Date().toISOString())
+                .limit(1);
 
-        if (!sessions || sessions.length === 0) {
-            return NextResponse.json({
-                message: 'Kode OTP tidak valid atau sudah kadaluarsa.'
-            }, { status: 401 });
+            if (fetchError) throw fetchError;
+
+            if (!sessions || sessions.length === 0) {
+                return NextResponse.json({
+                    message: 'Kode OTP tidak valid atau sudah kadaluarsa.'
+                }, { status: 401 });
+            }
+
+            // 2. Tandai OTP sebagai sudah dipakai
+            await supabaseAdmin
+                .from('otp_sessions')
+                .update({ used: true })
+                .eq('id', sessions[0].id);
         }
-
-        // 2. Tandai OTP sebagai sudah dipakai
-        await supabaseAdmin
-            .from('otp_sessions')
-            .update({ used: true })
-            .eq('id', sessions[0].id);
+        // --- END MIDTRANS REVIEW BYPASS ---
 
         // 3. Cek apakah ini affiliate login — buat JWT khusus affiliator
         if (isAffiliateLogin) {
