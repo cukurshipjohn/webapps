@@ -13,6 +13,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [shopEffectiveSlug, setShopEffectiveSlug] = useState<string | null>(null);
   const [shopLogo, setShopLogo] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [pendingVoids, setPendingVoids] = useState(0);
 
   // Strip protokol jika env var diset dengan https:// (misal di Vercel)
   const appDomain = (process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id").replace(/^https?:\/\//, "");
@@ -57,6 +58,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         if (d.slug) setShopSlug(d.slug);
         if (d.effective_slug) setShopEffectiveSlug(d.effective_slug);
         if (d.logo_url) setShopLogo(d.logo_url);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/admin/bookings/void")
+      .then(r => r.json())
+      .then(d => {
+        if (d.data) setPendingVoids(d.data.length);
       })
       .catch(() => {});
   }, []);
@@ -165,7 +175,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   }`}
               >
                 <span className="text-lg opacity-80">{link.icon}</span>
-                {link.name}
+                <span className="flex-1">{link.name}</span>
+                {link.name === "Monitor Booking" && pendingVoids > 0 && (
+                  <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5 shadow-sm flex items-center justify-center min-w-[20px]">
+                    {pendingVoids}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -223,7 +238,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                         : "text-neutral-400"
                       }`}
                   >
-                    <span>{link.icon}</span> {link.name}
+                    <span>{link.icon}</span> <span className="flex-1">{link.name}</span>
+                    {link.name === "Monitor Booking" && pendingVoids > 0 && (
+                      <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5 shadow-sm flex items-center justify-center min-w-[20px]">
+                        {pendingVoids}
+                      </span>
+                    )}
                   </Link>
                 );
               })}
