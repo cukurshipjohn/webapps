@@ -459,7 +459,7 @@ export default function AdminServicesPage() {
                 <div>
                   <label className="block text-xs font-medium text-neutral-400 mb-1">Harga (Rp) <span className="text-red-500">*</span></label>
                   <input
-                    type="number" min="0" step="5000"
+                    type="number" min="0" step="1000"
                     value={formData.price || ""}
                     onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
                     className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary transition-colors font-mono"
@@ -473,7 +473,7 @@ export default function AdminServicesPage() {
                   <div>
                     <label className="block text-xs font-medium text-neutral-400 mb-1">Harga Min <span className="text-red-500">*</span></label>
                     <input
-                      type="number" min="0" step="5000"
+                      type="number" min="0" step="1000"
                       value={formData.price_min ?? ""}
                       onChange={(e) => setFormData({ ...formData, price_min: Number(e.target.value) })}
                       className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary transition-colors font-mono"
@@ -483,7 +483,7 @@ export default function AdminServicesPage() {
                   <div>
                     <label className="block text-xs font-medium text-neutral-400 mb-1">Harga Maks <span className="text-red-500">*</span></label>
                     <input
-                      type="number" min="0" step="5000"
+                      type="number" min="0" step="1000"
                       value={formData.price_max ?? ""}
                       onChange={(e) => setFormData({ ...formData, price_max: Number(e.target.value) })}
                       className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary transition-colors font-mono"
