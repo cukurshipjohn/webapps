@@ -107,6 +107,27 @@ export async function POST(request: NextRequest) {
         // ───────────────────────────────────────────────────────────
 
 
+        // ─── SNAPSHOT HARGA SAAT BOOKING ─────────
+        const { data: serviceData } = await supabaseAdmin
+            .from('services')
+            .select('name, price, price_type')
+            .eq('id', serviceId)
+            .single();
+
+        if (!serviceData) {
+            return NextResponse.json({ message: "Layanan tidak ditemukan." }, { status: 404 });
+        }
+
+        const { data: priceOverride } = await supabaseAdmin
+            .from('service_barber_pricing')
+            .select('price_override')
+            .eq('service_id', serviceId)
+            .eq('barber_id', barberId)
+            .maybeSingle();
+
+        const snapshotPrice = priceOverride?.price_override ?? serviceData?.price ?? 0;
+        // ─────────────────────────────────────────
+
         // Check for booking conflicts
         const { data: conflicts, error: conflictError } = await supabaseAdmin
             .from('bookings')
@@ -134,7 +155,10 @@ export async function POST(request: NextRequest) {
                 end_time: endTime.toISOString(),
                 customer_address: serviceType === 'home' ? customerAddress : null,
                 status: 'confirmed',
-                tenant_id: tenantId
+                tenant_id: tenantId,
+                final_price: snapshotPrice,
+                payment_method: null,
+                booking_source: 'online'
             })
             .select()
             .single();
@@ -147,9 +171,8 @@ export async function POST(request: NextRequest) {
         }
 
         // Fetch full details for Notification, including tenant's WA session
-        const [ { data: user }, { data: service }, { data: tenantSettings } ] = await Promise.all([
+        const [ { data: user }, { data: tenantSettings } ] = await Promise.all([
             supabaseAdmin.from('users').select('phone_number, name').eq('id', userId).single(),
-            supabaseAdmin.from('services').select('name, price').eq('id', serviceId).single(),
             supabaseAdmin.from('tenant_settings').select('wa_session_id').eq('tenant_id', tenantId).single()
         ]);
 
@@ -170,7 +193,7 @@ export async function POST(request: NextRequest) {
         if (barberData.phone) {
             const barberWaMessage = `🔔 *PESANAN BARU MASUK*\n\n` +
                 `*Pelanggan:* ${customerName} (${customerPhone})\n` +
-                `*Layanan:* ${service?.name || 'Tbd'} - Rp${service?.price || '0'}\n` +
+                `*Layanan:* ${serviceData.name} - Rp${snapshotPrice}\n` +
                 `*Tipe:* ${serviceType === 'home' ? 'Home Service' : 'Di Barbershop'}\n` +
                 `*Waktu:* ${formattedTime}\n` +
                 (serviceType === 'home' ? `*Alamat:* ${customerAddress}\n` : '') +
@@ -193,7 +216,7 @@ export async function POST(request: NextRequest) {
                     const ownerWaMessage = `👑 *LAPORAN BOOKING BARU*\n\n` +
                         `*Pelanggan:* ${customerName} (${customerPhone})\n` +
                         `*Barber Terpilih:* ${barberData.name}\n` +
-                        `*Layanan:* ${service?.name} - Rp${service?.price}\n` +
+                        `*Layanan:* ${serviceData.name} - Rp${snapshotPrice}\n` +
                         `*Jadwal:* ${formattedTime}`;
 
                     fetch(`${waServiceUrl}/send-message`, {
@@ -214,7 +237,7 @@ export async function POST(request: NextRequest) {
                 tenant_id: tenantId,
                 customer: { name: customerName, phone: customerPhone, address: customerAddress },
                 barber: { id: barberId, name: barberData.name },
-                service: { name: service?.name, type: serviceType, price: service?.price },
+                service: { name: serviceData.name, type: serviceType, price: snapshotPrice },
                 schedule: { start_time: bookingTime.toISOString(), format_time: formattedTime }
             };
 
