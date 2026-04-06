@@ -4,6 +4,74 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+interface ExportButtonProps {
+  dateFrom: string;
+  dateTo: string;
+  statusFilter: string;
+}
+
+function ExportButton({ dateFrom, dateTo, statusFilter }: ExportButtonProps) {
+  const [loading, setLoading] = useState(false);
+  const [format, setFormat] = useState<'csv' | 'xlsx'>('xlsx');
+
+  async function handleExport() {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        date_from: dateFrom,
+        date_to: dateTo,
+        format: format,
+        ...(statusFilter && statusFilter !== 'all' ? { status: statusFilter } : {})
+      });
+
+      const res = await fetch(`/api/admin/bookings/export?${params.toString()}`);
+
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error ?? 'Gagal mengunduh laporan');
+        return;
+      }
+
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      
+      const dateLabel = `${dateFrom}_sd_${dateTo}`;
+      a.href     = url;
+      a.download = `laporan-transaksi_${dateLabel}.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Terjadi kesalahan koneksi');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2 ml-auto">
+      <select
+        value={format}
+        onChange={e => setFormat(e.target.value as 'csv' | 'xlsx')}
+        className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2.5 text-xs text-white focus:outline-none focus:border-primary disabled:opacity-50"
+        disabled={loading}
+      >
+        <option value="xlsx">Excel (.xlsx)</option>
+        <option value="csv">CSV (.csv)</option>
+      </select>
+
+      <button
+        onClick={handleExport}
+        disabled={loading}
+        className="px-4 py-2.5 bg-green-600/90 hover:bg-green-500 rounded-lg text-white text-sm font-medium transition-all disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
+      >
+        {loading ? "⏳" : "⬇️"}
+        <span className="hidden sm:inline">Export</span>
+      </button>
+    </div>
+  );
+}
+
 export interface Booking {
   id: string;
   start_time: string;
@@ -214,13 +282,16 @@ export default function AdminBookingsPage() {
              </select>
            </div>
            
-           <div className="flex items-start mt-5">
-              <button 
-                onClick={fetchBookings}
-                className="w-full sm:w-auto px-6 py-3 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-all border border-neutral-700 flex items-center justify-center gap-2"
-              >
-                🔄 Segarkan
-              </button>
+           <div className="flex items-start mt-5 flex-col w-full sm:w-auto gap-3">
+              <div className="flex w-full items-center gap-2">
+                <button 
+                  onClick={fetchBookings}
+                  className="w-full sm:w-auto px-6 py-3 bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-all border border-neutral-700 flex items-center justify-center gap-2"
+                >
+                  🔄 Segarkan
+                </button>
+                <ExportButton dateFrom={getDateRange(dateFilterType).startDate} dateTo={getDateRange(dateFilterType).endDate} statusFilter={statusFilter} />
+              </div>
            </div>
         </div>
 
