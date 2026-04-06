@@ -314,44 +314,37 @@ export async function POST(request: NextRequest) {
                 // 1. Awaiting Customer CRM input
                 if (session.step === 'awaiting_customer') {
                     if (ctx.crm_action === 'search') {
+                        if (textLower === 'skip' || textLower === 'umum' || textLower === 'tanpa nama' || textLower === '-') {
+                            await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...ctx, customer_id: null, customer_name: 'Pelanggan Umum', crm_action: undefined });
+                            await showServicesMenu(chatId, null, tenant.id, barber, tz);
+                            return NextResponse.json({ ok: true });
+                        }
+
                         const { data: customers } = await supabaseAdmin.from('customers').select('*').eq('tenant_id', tenant.id).or(`name.ilike.%${text}%,phone.ilike.%${text}%`).limit(5);
+                        
                         if (!customers || customers.length === 0) {
-                            await sendTelegramMessage(chatId, `Pelanggan tidak ditemukan.`, {
-                                reply_markup: { inline_keyboard: [
-                                    [{ text: '➕ Daftarkan sebagai baru', callback_data: 'crm_new' }],
-                                    [{ text: '⏭️ Lewati', callback_data: 'crm_skip' }]
-                                ]}
-                            });
+                            // Langsung otomatis daftarkan tanpa rewel nanya no HP
+                            const { data: newCustomer } = await supabaseAdmin.from('customers').insert({
+                                tenant_id: tenant.id,
+                                name: text,
+                                phone: null
+                            }).select().single();
+
+                            if (newCustomer) {
+                                await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...ctx, customer_id: newCustomer.id, customer_name: newCustomer.name, crm_action: undefined, new_customer_name: undefined });
+                                await sendTelegramMessage(chatId, `✅ Pelanggan <b>${newCustomer.name}</b> otomatis terdaftar.`);
+                                await showServicesMenu(chatId, null, tenant.id, barber, tz);
+                            }
                         } else {
+                            // Ditemukan. Simpan teks aslinya sebagai backup jika ternyata bukan pengunjung lama.
+                            await upsertSession(chatId, tenant.id, barber.id, 'awaiting_customer', { ...ctx, crm_action: 'search', new_customer_name: text });
                             const inline_keyboard = customers.map(c => ([{
                                 text: `${c.name} (${c.phone || '-'}) — ${c.total_visits} kunjungan`,
                                 callback_data: `crm_pick_${c.id}`
                             }]));
-                            inline_keyboard.push([{ text: '➕ Bukan yang ini, daftarkan baru', callback_data: 'crm_new' }]);
-                            inline_keyboard.push([{ text: '⏭️ Lewati', callback_data: 'crm_skip' }]);
-                            await sendTelegramMessage(chatId, `Hasil pencarian:`, { inline_keyboard });
-                        }
-                    } else if (ctx.crm_action === 'new_name') {
-                        await upsertSession(chatId, tenant.id, barber.id, 'awaiting_customer', { ...ctx, crm_action: 'new_phone', new_customer_name: text });
-                        await sendTelegramMessage(chatId, `Siap. Ketik nomor HP pelanggan (atau ketik "skip" jika tidak ada):`);
-                    } else if (ctx.crm_action === 'new_phone') {
-                        const phone = textLower === 'skip' ? null : text;
-                        const { data: newCustomer, error } = await supabaseAdmin.from('customers').insert({
-                            tenant_id: tenant.id,
-                            name: ctx.new_customer_name,
-                            phone: phone
-                        }).select().single();
-
-                        if (error && error.code === '23505') { // unique violation
-                            await sendTelegramMessage(chatId, `⚠️ Nomor HP sudah terdaftar. Silakan gunakan pencarian atau nomer lain.`);
-                            await upsertSession(chatId, tenant.id, barber.id, 'awaiting_customer', { ...ctx, crm_action: 'new_name' });
-                            return NextResponse.json({ ok: true });
-                        }
-
-                        if (newCustomer) {
-                            await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...ctx, customer_id: newCustomer.id, customer_name: newCustomer.name, crm_action: undefined, new_customer_name: undefined });
-                            await sendTelegramMessage(chatId, `✅ Pelanggan *${newCustomer.name}* sukses didaftarkan.`);
-                            await showServicesMenu(chatId, null, tenant.id, barber, tz);
+                            inline_keyboard.push([{ text: `➕ Bukan, daftarkan ${text} sbg baru`, callback_data: 'crm_force_new' }]);
+                            inline_keyboard.push([{ text: '⏭️ Lewati (Pelanggan Umum)', callback_data: 'crm_skip' }]);
+                            await sendTelegramMessage(chatId, `Ditemukan pelanggan dengan nama mirip:`, { inline_keyboard });
                         }
                     }
                     return NextResponse.json({ ok: true });
@@ -403,11 +396,10 @@ export async function POST(request: NextRequest) {
             if (textLower === '/start' || textLower === '/kasir') {
                 // Mulai sesi baru, default ke pencarian pelanggan. Memungkinkan user langsung mengetik nama.
                 await upsertSession(chatId, tenant.id, barber.id, 'awaiting_customer', { crm_action: 'search' });
-                await sendTelegramMessage(chatId, `💈 *Transaksi Baru*\n\nSilakan langsung <b>ketik nama / nomor HP pelanggan</b> untuk mencari riwayatnya, atau pilih opsi di bawah:`, {
+                await sendTelegramMessage(chatId, `💈 *Transaksi Baru*\n\nSilakan langsung <b>ketik nama pelanggan</b> (contoh: Budi) atau pilih "Tanpa Nama" di bawah ini:`, {
                     reply_markup: {
                         inline_keyboard: [
-                            [{ text: '➕ Daftarkan Pelanggan Baru', callback_data: 'crm_new' }],
-                            [{ text: '⏭️ Lewati (Pelanggan Umum)', callback_data: 'crm_skip' }],
+                            [{ text: '👤 Lanjutkan Tanpa Nama', callback_data: 'crm_skip' }],
                         ]
                     }
                 });
@@ -481,15 +473,19 @@ export async function POST(request: NextRequest) {
                 await answerCallbackQuery(callbackId);
                 return NextResponse.json({ ok: true });
             }
-            if (data === 'crm_search') {
-                await upsertSession(chatId, tenant.id, barber.id, 'awaiting_customer', { ...ctx, crm_action: 'search' });
-                await editTelegramMessage(chatId, messageId, `Silakan ketik nama atau nomor HP pelanggan:`);
-                await answerCallbackQuery(callbackId);
-                return NextResponse.json({ ok: true });
-            }
-            if (data === 'crm_new') {
-                await upsertSession(chatId, tenant.id, barber.id, 'awaiting_customer', { ...ctx, crm_action: 'new_name' });
-                await editTelegramMessage(chatId, messageId, `Silakan ketik nama lengkap pelanggan baru:`);
+            if (data === 'crm_force_new') {
+                if (ctx.new_customer_name) {
+                    const { data: newCustomer } = await supabaseAdmin.from('customers').insert({
+                        tenant_id: tenant.id,
+                        name: ctx.new_customer_name,
+                        phone: null
+                    }).select().single();
+                    if (newCustomer) {
+                        await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...ctx, customer_id: newCustomer.id, customer_name: newCustomer.name, crm_action: undefined, new_customer_name: undefined });
+                        await editTelegramMessage(chatId, messageId, `✅ <b>${newCustomer.name}</b> otomatis terdaftar!`);
+                        await showServicesMenu(chatId, null, tenant.id, barber, tz);
+                    }
+                }
                 await answerCallbackQuery(callbackId);
                 return NextResponse.json({ ok: true });
             }
@@ -497,7 +493,7 @@ export async function POST(request: NextRequest) {
                 const custId = data.replace('crm_pick_', '');
                 const { data: cust } = await supabaseAdmin.from('customers').select('id, name').eq('id', custId).single();
                 if (cust) {
-                    await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...ctx, customer_id: cust.id, customer_name: cust.name, crm_action: undefined });
+                    await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...ctx, customer_id: cust.id, customer_name: cust.name, crm_action: undefined, new_customer_name: undefined });
                     await showServicesMenu(chatId, messageId, tenant.id, barber, tz);
                 }
                 await answerCallbackQuery(callbackId);
