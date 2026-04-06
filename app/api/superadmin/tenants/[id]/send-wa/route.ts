@@ -26,7 +26,10 @@ export async function POST(
         .eq('id', id)
         .single()
 
-      const ownerPhone = (tenant?.users as any)?.phone
+      const users = tenant?.users;
+      const ownerPhone = Array.isArray(users) 
+        ? users[0]?.phone 
+        : (users as unknown as { phone?: string })?.phone;
       if (!ownerPhone) {
         return NextResponse.json(
           { error: 'Nomor HP owner tidak ditemukan' },
@@ -70,8 +73,9 @@ export async function POST(
       }
 
       return NextResponse.json({ success: true })
-  } catch (err: any) {
-      return NextResponse.json({ error: err.message }, { status: 403 })
+  } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+      return NextResponse.json({ error: errorMsg }, { status: 403 })
   }
 }
 

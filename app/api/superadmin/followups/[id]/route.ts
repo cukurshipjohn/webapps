@@ -45,7 +45,8 @@ export async function PATCH(
       }
 
       return NextResponse.json({ data })
-  } catch (err: any) {
-      return NextResponse.json({ error: err.message }, { status: 403 })
+  } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+      return NextResponse.json({ error: errorMsg }, { status: 403 })
   }
 }
