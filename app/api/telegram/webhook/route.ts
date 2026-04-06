@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { canUseKasir } from '@/lib/billing-plans';
 import { SERVICE_TYPES } from '@/lib/service-types';
+import {
+  formatReceiptDateTime,
+  getTodayInTZ,
+  dateRangeToUTC,
+  getTimezoneLabel,
+} from '@/lib/timezone';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
@@ -205,9 +211,12 @@ export async function POST(request: NextRequest) {
             // ══════════════════════════════════════════════════
             const { data: tenant } = await supabaseAdmin
                 .from('tenants')
-                .select('plan, is_active, plan_expires_at')
+                .select('plan, is_active, plan_expires_at, timezone')
                 .eq('id', barber.tenant_id)
                 .single();
+
+            // Timezone tenant — default WIB jika belum diset
+            const tz = tenant?.timezone ?? 'Asia/Jakarta';
 
             if (!tenant || !canUseKasir(tenant.plan || 'trial')) {
                 await sendTelegramMessage(chatId,
@@ -308,22 +317,24 @@ export async function POST(request: NextRequest) {
                     { inline_keyboard }
                 );
             } else if (text === '/laporan') {
-                // Tarik rekap shift hari ini
-                const startOfDay = new Date();
-                startOfDay.setHours(0, 0, 0, 0);
+                // Tarik rekap shift hari ini dalam timezone tenant
+                const todayLocal = getTodayInTZ(tz)
+                const { start: startUTC, end: endUTC } = dateRangeToUTC(todayLocal, tz)
 
                 const { data: todayBookings } = await supabaseAdmin
                     .from('bookings')
                     .select('final_price, services(price)')
                     .eq('barber_id', barber.id)
                     .eq('booking_source', 'pos_kasir')
-                    .gte('created_at', startOfDay.toISOString());
+                    .gte('created_at', startUTC)
+                    .lte('created_at', endUTC);
 
                 const count = todayBookings?.length || 0;
                 const total = todayBookings?.reduce((sum, b: any) => sum + (b.final_price ?? b.services?.price ?? 0), 0) || 0;
 
                 await sendTelegramMessage(chatId,
-                    `📊 <b>Laporan Shift Anda Hari Ini</b>\n\n` +
+                    `📊 <b>Laporan Shift Anda Hari Ini</b>\n` +
+                    `📅 ${todayLocal} (${getTimezoneLabel(tz)})\n\n` +
                     `Total Kepala: ${count} Pelanggan\n` +
                     `Omset Kasir Walk-In: ${formatIDR(total)}\n\n` +
                     `<i>Kerja bagus, ${barber.name}!</i>`
@@ -445,14 +456,22 @@ export async function POST(request: NextRequest) {
                 if (insertError) {
                     await editTelegramMessage(chatId, messageId, `❌ Gagal menyimpan: ${insertError.message}`);
                 } else {
-                    const cashChange = 0; // if payment logic has change in future
+                    // Ambil timezone tenant untuk struk
+                    const { data: tenantForReceipt } = await supabaseAdmin
+                        .from('tenants')
+                        .select('timezone')
+                        .eq('id', barber.tenant_id)
+                        .single();
+                    const receiptTz = tenantForReceipt?.timezone ?? 'Asia/Jakarta';
+                    const waktu = formatReceiptDateTime(receiptTz);
+
                     const receiptMessage = `🧾 <b>TRANSAKSI TERSIMPAN</b>\n` +
                         `━━━━━━━━━━━━━━━━━━━━\n` +
                         `${service.name.padEnd(20)} Rp ${formatRupiah(resolvedPrice)}\n` +
                         `━━━━━━━━━━━━━━━━━━━━\n` +
                         `<b>TOTAL: Rp ${formatRupiah(resolvedPrice)}</b>\n` +
                         `Metode: Cash\n` +
-                        `${cashChange > 0 ? `Kembalian: Rp ${formatRupiah(cashChange)}\n` : ''}` +
+                        `Waktu : ${waktu}\n` +
                         `━━━━━━━━━━━━━━━━━━━━\n` +
                         `Terima kasih! 💈`;
                         
