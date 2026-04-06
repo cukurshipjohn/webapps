@@ -9,9 +9,10 @@ export interface Booking {
   start_time: string;
   end_time: string;
   status: "confirmed" | "completed" | "cancelled";
-  service_type: "home" | "barbershop";
+  service_type: "home" | "barbershop" | "pos_kasir";
   customer_address: string | null;
   tenant_id: string;
+  final_price?: number | null;
   users?: { name: string; phone_number: string };
   barbers?: { name: string };
   services?: { name: string; price: number };
@@ -277,7 +278,12 @@ export default function AdminBookingsPage() {
                     <div>
                       <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-semibold mb-1">Detail Layanan</p>
                       <p className="font-medium text-neutral-200">{serviceName}</p>
-                      <p className="text-primary font-mono text-sm mt-0.5">{booking.services?.price ? formatRupiah(booking.services.price) : '-'}</p>
+                      <p className="text-primary font-mono text-sm mt-0.5 flex items-center gap-2">
+                        {formatRupiah(booking.final_price ?? booking.services?.price ?? 0)}
+                        {booking.final_price != null && booking.services?.price != null && booking.final_price !== booking.services.price && (
+                          <span className="text-[10px] bg-neutral-800 px-1.5 py-0.5 rounded cursor-help" title="Harga berbeda dari master layanan (Custom Kasir)">✏️</span>
+                        )}
+                      </p>
                       <div className="mt-2 flex items-center gap-2 text-xs text-neutral-400">
                         <span>💈 Kapster:</span>
                         <span className="font-medium text-neutral-200">{booking.barbers?.name || "-"}</span>

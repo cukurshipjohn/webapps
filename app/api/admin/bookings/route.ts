@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
                 service_type, 
                 customer_address,
                 tenant_id,
+                final_price,
                 users ( name, phone_number ),
                 barbers ( name ),
                 services ( name, price )

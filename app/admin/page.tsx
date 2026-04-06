@@ -26,6 +26,13 @@ interface DashboardData {
   bookings_today: number;
   bookings_this_week: number;
   revenue_today: number;
+  revenue_today_breakdown?: {
+    cash: number;
+    qris: number;
+    transfer: number;
+    online: number;
+    pos: number;
+  };
   revenue_this_month: number;
   active_barbers: number;
   upcoming_bookings: Booking[];
@@ -123,21 +130,45 @@ export default function AdminDashboardOverview() {
               </div>
 
               {/* Card 3 */}
-              <div className="glass p-6 rounded-3xl border border-green-500/20 bg-gradient-to-br from-green-500/5 to-transparent">
-                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-widest mb-2">Pendapatan Hari Ini</p>
-                <div className="flex items-end gap-3">
-                  <span className="text-3xl font-bold text-green-400 tracking-tight">{formatRupiah(data.revenue_today)}</span>
+              <div className="glass p-5 rounded-3xl border border-green-500/20 bg-gradient-to-br from-green-500/5 to-transparent flex flex-col justify-between h-full relative group">
+                <div>
+                  <p className="text-xs font-semibold text-neutral-400 uppercase tracking-widest mb-1.5">Pendapatan Hari Ini</p>
+                  <div className="flex items-end gap-3 mb-2">
+                    <span className="text-3xl font-bold text-green-400 tracking-tight">{formatRupiah(data.revenue_today)}</span>
+                  </div>
                 </div>
-                <p className="text-[10px] text-neutral-500 mt-2">Berdasarkan booking selesai (Completed)</p>
+                
+                {data.revenue_today_breakdown && (
+                  <div className="grid grid-cols-2 gap-1.5 mt-auto pt-2 border-t border-neutral-800/50">
+                    <div className="text-[10px] text-neutral-400 flex justify-between">
+                      <span>Cash:</span> 
+                      <span className="text-neutral-200 font-mono">{formatRupiah(data.revenue_today_breakdown.cash)}</span>
+                    </div>
+                    <div className="text-[10px] text-neutral-400 flex justify-between">
+                      <span>QRIS:</span> 
+                      <span className="text-neutral-200 font-mono">{formatRupiah(data.revenue_today_breakdown.qris)}</span>
+                    </div>
+                    <div className="text-[10px] text-neutral-400 flex justify-between">
+                      <span>TF:</span> 
+                      <span className="text-neutral-200 font-mono">{formatRupiah(data.revenue_today_breakdown.transfer)}</span>
+                    </div>
+                    <div className="text-[10px] text-neutral-500 flex justify-between" title="Trx Kasir vs Online">
+                      <span>Kasir:</span>
+                      <span>{data.revenue_today_breakdown.pos} / {data.revenue_today_breakdown.pos + data.revenue_today_breakdown.online}</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Card 4 */}
-              <div className="glass p-6 rounded-3xl border border-blue-500/20 bg-gradient-to-br from-blue-500/5 to-transparent">
-                <p className="text-xs font-semibold text-neutral-400 uppercase tracking-widest mb-2">Pendapatan Bulan Ini</p>
-                <div className="flex items-end gap-3">
-                  <span className="text-3xl font-bold text-blue-400 tracking-tight">{formatRupiah(data.revenue_this_month)}</span>
+              <div className="glass p-5 rounded-3xl border border-blue-500/20 bg-gradient-to-br from-blue-500/5 to-transparent flex flex-col justify-between h-full">
+                <div>
+                  <p className="text-xs font-semibold text-neutral-400 uppercase tracking-widest mb-1.5">Pendapatan Bulan Ini</p>
+                  <div className="flex items-end gap-3">
+                    <span className="text-3xl font-bold text-blue-400 tracking-tight">{formatRupiah(data.revenue_this_month)}</span>
+                  </div>
                 </div>
-                <p className="text-[10px] text-neutral-500 mt-2">Akumulasi estimasi kotor</p>
+                <p className="text-[10px] text-neutral-500 mt-auto pt-2">Akumulasi estimasi kotor</p>
               </div>
             </div>
 

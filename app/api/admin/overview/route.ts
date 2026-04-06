@@ -57,14 +57,14 @@ export async function GET(request: NextRequest) {
                 .lte('start_time', endOfWeekWIB.toISOString()),
 
             // [2] Revenue Today (Completed only)
-            supabaseAdmin.from('bookings').select('services(price)')
+            supabaseAdmin.from('bookings').select('final_price, payment_method, booking_source, services(price)')
                 .eq('tenant_id', tenantId)
                 .eq('status', 'completed')
                 .gte('start_time', startOfTodayWIB.toISOString())
                 .lte('start_time', endOfTodayWIB.toISOString()),
 
             // [3] Revenue This Month (Completed only)
-            supabaseAdmin.from('bookings').select('services(price)')
+            supabaseAdmin.from('bookings').select('final_price, services(price)')
                 .eq('tenant_id', tenantId)
                 .eq('status', 'completed')
                 .gte('start_time', startOfMonthWIB.toISOString())
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
 
             // [5] Upcoming Bookings (Confirmed, > Now)
             supabaseAdmin.from('bookings').select(`
-                id, start_time, end_time, service_type,
+                id, start_time, end_time, service_type, final_price,
                 users(name, phone_number),
                 barbers(name),
                 services(name, price)
@@ -102,14 +102,24 @@ export async function GET(request: NextRequest) {
         
         // Sum revenue today
         const revTodayData = results[2].data || [];
+        const revenue_today_breakdown = { cash: 0, qris: 0, transfer: 0, online: 0, pos: 0 };
         const revenue_today = revTodayData.reduce((sum: number, row: any) => {
-            return sum + (row.services?.price || 0);
+            const price = row.final_price ?? row.services?.price ?? 0;
+            if (row.payment_method === 'cash') revenue_today_breakdown.cash += price;
+            else if (row.payment_method === 'qris') revenue_today_breakdown.qris += price;
+            else if (row.payment_method === 'transfer') revenue_today_breakdown.transfer += price;
+            
+            if (row.booking_source === 'pos_kasir') revenue_today_breakdown.pos += 1;
+            else revenue_today_breakdown.online += 1;
+            
+            return sum + price;
         }, 0);
         
         // Sum revenue month
         const revMonthData = results[3].data || [];
         const revenue_this_month = revMonthData.reduce((sum: number, row: any) => {
-            return sum + (row.services?.price || 0);
+            const price = row.final_price ?? row.services?.price ?? 0;
+            return sum + price;
         }, 0);
         
         const upcoming_bookings = results[5].data || [];
@@ -132,6 +142,7 @@ export async function GET(request: NextRequest) {
             bookings_today,
             bookings_this_week,
             revenue_today,
+            revenue_today_breakdown,
             revenue_this_month,
             active_barbers: active_barbers_count,
             upcoming_bookings,
