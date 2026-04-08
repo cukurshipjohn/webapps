@@ -992,12 +992,40 @@ export async function POST(request: NextRequest) {
 
                 const groupId = crypto.randomUUID();
                 const now = new Date().toISOString();
+
+                // Upsert customer ke tabel customers terlebih dahulu
+                let resolvedCustomerId: string | null = ctx.customer_id ?? null;
+                const isGenericCustomer = !ctx.customer_name || ctx.customer_name === 'Pelanggan Umum';
+                if (!resolvedCustomerId && !isGenericCustomer) {
+                    // Cari customer yang sudah ada
+                    const { data: existingCustomer } = await supabaseAdmin
+                        .from('customers')
+                        .select('id, total_visits')
+                        .eq('tenant_id', tenant.id)
+                        .ilike('name', ctx.customer_name.trim())
+                        .maybeSingle();
+                    if (existingCustomer) {
+                        resolvedCustomerId = existingCustomer.id;
+                        // Update last_visit_at dan total_visits
+                        await supabaseAdmin.from('customers')
+                            .update({ last_visit_at: now, total_visits: (existingCustomer.total_visits ?? 0) + 1 })
+                            .eq('id', existingCustomer.id);
+                    } else {
+                        // Buat customer baru
+                        const { data: newCustomer } = await supabaseAdmin
+                            .from('customers')
+                            .insert({ tenant_id: tenant.id, name: ctx.customer_name.trim(), total_visits: 1, last_visit_at: now })
+                            .select('id')
+                            .single();
+                        resolvedCustomerId = newCustomer?.id ?? null;
+                    }
+                }
+
                 const inserts = ctx.cart.map((item: any) => ({
                     tenant_id: tenant.id,
                     barber_id: ctx.selected_barber_id ?? barber.id,
                     service_id: item.service_id,
-                    customer_id: ctx.customer_id ?? null,
-                    customer_name: ctx.customer_name,
+                    customer_id: resolvedCustomerId,
                     status: 'completed',
                     final_price: item.price,
                     payment_method: ctx.payment_method,
@@ -1020,7 +1048,7 @@ export async function POST(request: NextRequest) {
                 const methodEmoji: Record<string, string> = { cash: '💵', qris: '📱', transfer: '🏦' };
                 const mEmoji = methodEmoji[ctx.payment_method] ?? '💳';
 
-                await editTelegramMessage(chatId, messageId, `✅ <b>TRANSAKSI BERHASIL</b>\n${'═'.repeat(28)}\n🏪 ${tenant.name}\n👤 ${ctx.customer_name}\n✂️ ${ctx.selected_barber_name ?? barber.name}\n📅 ${waktu}\n${'─'.repeat(28)}\n${cartLines}\n${'─'.repeat(28)}\n💰 <b>TOTAL: Rp ${formatRupiah(total)}</b>\n${mEmoji} ${ctx.payment_method.toUpperCase()}\n${'═'.repeat(28)}\n<i>Terima kasih! ✂️</i>`, {
+                await editTelegramMessage(chatId, messageId, `✅ <b>TRANSAKSI BERHASIL</b>\n${'═'.repeat(28)}\n🏪 ${tenant.shop_name}\n👤 ${ctx.customer_name}\n✂️ ${ctx.selected_barber_name ?? barber.name}\n📅 ${waktu}\n${'─'.repeat(28)}\n${cartLines}\n${'─'.repeat(28)}\n💰 <b>TOTAL: Rp ${formatRupiah(total)}</b>\n${mEmoji} ${ctx.payment_method.toUpperCase()}\n${'═'.repeat(28)}\n<i>Terima kasih! ✂️</i>`, {
                     reply_markup: {
                         inline_keyboard: [[ { text: '↩️ Batalkan Transaksi Ini', callback_data: `void_req_${groupId}` } ]]
                     }
