@@ -284,19 +284,20 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ ok: true });
             }
 
-            const { data: barber } = await supabaseAdmin.from('barbers').select('id, name, tenant_id').eq('telegram_chat_id', chatId).single();
+            const { data: barber } = await supabaseAdmin.from('barbers').select('id, name, tenant_id, role').eq('telegram_chat_id', chatId).single();
             if (!barber) {
                 await sendTelegramMessage(chatId, `❌ <b>Akses Ditolak</b>\n\nAkun Telegram kamu belum terhubung ke sistem kasir.\nKetik /daftar untuk melihat Chat ID kamu.`);
                 return NextResponse.json({ ok: true });
             }
 
-            const { data: tenantData, error: tenantError } = await supabaseAdmin.from('tenants').select('id, shop_name, plan, timezone, is_centralized_cashier, is_nlp_enabled').eq('id', barber.tenant_id).single();
+            const { data: tenantData, error: tenantError } = await supabaseAdmin.from('tenants').select('id, shop_name, plan, timezone').eq('id', barber.tenant_id).single();
             if (tenantError) {
                 console.error('[TELEGRAM WEBHOOK ERROR] Error fetching tenant:', tenantError);
             }
             const tenant = tenantData as any;
             const tz = tenant?.timezone ?? 'Asia/Jakarta';
-            const isCentralized = tenant?.is_centralized_cashier ?? false;
+            // Mode sentral otomatis terdeteksi dari role barber yang login
+            const isCentralized = (barber as any).role === 'cashier';
 
             if (!tenant || !canUseKasir(tenant.plan || 'trial')) {
                 await sendTelegramMessage(chatId, `⚠️ <b>Fitur kasir tidak tersedia.</b>\nCek paket berlangganan toko kamu.`);
@@ -410,7 +411,8 @@ export async function POST(request: NextRequest) {
                 await sendTelegramMessage(chatId, `📊 <b>Laporan Shift Anda Hari Ini</b>\n📅 ${todayLocal} (${getTimezoneLabel(tz)})\n\nTotal Kepala: ${count} Pelanggan\nOmset: Rp ${formatRupiah(total)}`);
             } else {
                 if (!session || session.step === 'idle') {
-                    const nlpEnabled = tenant.is_nlp_enabled && !!process.env.GEMINI_API_KEY;
+                    // NLP aktif otomatis berdasarkan plan (trial, pro, business) tanpa flag manual
+                    const nlpEnabled = canUseKasir(tenant.plan ?? 'trial') && !!process.env.GEMINI_API_KEY;
 
                     if (!nlpEnabled) {
                         await sendTelegramMessage(chatId, '⚠️ Ketuk /kasir untuk memulai transaksi.');
@@ -572,20 +574,20 @@ export async function POST(request: NextRequest) {
             const chatId = body.callback_query.message.chat.id.toString();
             const messageId = body.callback_query.message.message_id;
 
-            const { data: barber } = await supabaseAdmin.from('barbers').select('id, name, tenant_id').eq('telegram_chat_id', chatId).single();
+            const { data: barber } = await supabaseAdmin.from('barbers').select('id, name, tenant_id, role').eq('telegram_chat_id', chatId).single();
             if (!barber) {
                 await answerCallbackQuery(callbackId, "Akses ditolak.");
                 return NextResponse.json({ ok: true });
             }
 
-            const { data: tenantData } = await supabaseAdmin.from('tenants').select('id, shop_name, plan, timezone, is_centralized_cashier').eq('id', barber.tenant_id).single();
+            const { data: tenantData } = await supabaseAdmin.from('tenants').select('id, shop_name, plan, timezone').eq('id', barber.tenant_id).single();
             const tenant = tenantData as any;
             if (!tenant) {
                 await answerCallbackQuery(callbackId, "Toko tidak ditemukan.");
                 return NextResponse.json({ ok: true });
             }
             const tz = tenant.timezone ?? 'Asia/Jakarta';
-            const isCentralized = tenant.is_centralized_cashier ?? false;
+            const isCentralized = (barber as any).role === 'cashier';
 
             const session = await getSession(chatId, tenant.id);
             if (!session && !data.startsWith('void_req_')) {
