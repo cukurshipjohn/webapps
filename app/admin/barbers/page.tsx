@@ -13,6 +13,7 @@ export interface Barber {
   photo_url: string | null;
   telegram_username: string | null;
   telegram_chat_id: string | null;
+  role: 'barber' | 'cashier';
   tenant_id: string;
   created_at: string;
 }
@@ -44,6 +45,9 @@ export default function AdminBarbersPage() {
 
   // Toast / Notification
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  // Role Toggle state
+  const [loadingId, setLoadingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchBarbers();
@@ -172,6 +176,45 @@ export default function AdminBarbersPage() {
       setLoading(false);
     }
   };
+
+  async function handleRoleToggle(
+    barberId: string,
+    newRole:  'barber' | 'cashier'
+  ) {
+    setLoadingId(barberId)
+    try {
+      const res = await fetch(
+        `/api/admin/barbers/${barberId}/role`,
+        {
+          method:  'PATCH',
+          headers: {
+            'Content-Type':  'application/json',
+          },
+          body: JSON.stringify({ role: newRole }),
+        }
+      )
+
+      if (!res.ok) {
+        const err = await res.json()
+        alert(`Gagal: ${err.error}`)
+        return
+      }
+
+      // Update state lokal — tidak perlu refetch:
+      setBarbers(prev =>
+        prev.map(b =>
+          b.id === barberId
+            ? { ...b, role: newRole }
+            : b
+        )
+      )
+
+    } catch (err) {
+      alert('Gagal mengubah role. Coba lagi.')
+    } finally {
+      setLoadingId(null)
+    }
+  }
 
   // ═══════════════════════════════════════════════════════════
   // TELEGRAM MODAL HANDLERS
@@ -353,7 +396,34 @@ export default function AdminBarbersPage() {
                       ✂️
                     </div>
                   )}
-                  <h3 className="text-lg font-bold text-white mb-1">{barber.name}</h3>
+                  <h3 className="text-lg font-bold text-white mb-2">{barber.name}</h3>
+                  <button
+                    onClick={() => handleRoleToggle(
+                      barber.id,
+                      barber.role === 'barber' ? 'cashier' : 'barber'
+                    )}
+                    disabled={loadingId === barber.id}
+                    className={`
+                      px-3 py-1 rounded-full text-[11px] font-medium uppercase tracking-wider
+                      transition-colors cursor-pointer mb-3
+                      ${barber.role === 'cashier'
+                        ? 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 border border-blue-500/30'
+                        : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 border border-neutral-700'
+                      }
+                    `}
+                    title={
+                      barber.role === 'cashier'
+                        ? 'Klik untuk ubah ke Barber'
+                        : 'Klik untuk ubah ke Kasir'
+                    }
+                  >
+                    {loadingId === barber.id
+                      ? '...'
+                      : barber.role === 'cashier'
+                        ? '🧾 Kasir Sentral'
+                        : '✂️ Barber Biasa'
+                    }
+                  </button>
                   <span className="text-xs font-medium uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20 mb-3">
                     {barber.specialty || "General Barber"}
                   </span>
