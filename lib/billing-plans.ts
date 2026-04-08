@@ -221,7 +221,8 @@ export type PlanId = keyof typeof PLANS;
 
 /** Ambil objek plan berdasarkan ID. Return null jika tidak ditemukan. */
 export function getPlanById(planId: string) {
-  return PLANS[planId as PlanId] ?? null;
+  if (!planId) return null;
+  return PLANS[planId.toLowerCase() as PlanId] ?? null;
 }
 
 /** @deprecated Gunakan getPlanById(). Alias untuk backward compatibility. */

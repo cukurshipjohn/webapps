@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 
 export async function PATCH(
   req:     NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const user = getUserFromToken(req)
   if (!user || !['owner', 'superadmin'].includes(user.role)) {
@@ -22,6 +22,8 @@ export async function PATCH(
     )
   }
 
+  const { id: barberId } = await params
+
   const body = await req.json()
   const newRole = body.role
 
@@ -35,7 +37,7 @@ export async function PATCH(
   const { data: barber } = await supabaseAdmin
     .from('barbers')
     .select('id, name, role')
-    .eq('id', params.id)
+    .eq('id', barberId)
     .eq('tenant_id', tenantId)
     .single()
 
@@ -48,7 +50,7 @@ export async function PATCH(
   const { error } = await supabaseAdmin
     .from('barbers')
     .update({ role: newRole })
-    .eq('id', params.id)
+    .eq('id', barberId)
     .eq('tenant_id', tenantId)
 
   if (error) {
@@ -59,7 +61,7 @@ export async function PATCH(
 
   return NextResponse.json({
     success: true,
-    barber_id: params.id,
+    barber_id: barberId,
     role: newRole,
   })
 }
