@@ -288,7 +288,10 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ ok: true });
             }
 
-            const { data: tenantData } = await supabaseAdmin.from('tenants').select('id, name, plan, timezone, is_centralized_cashier, is_nlp_enabled').eq('id', barber.tenant_id).single();
+            const { data: tenantData, error: tenantError } = await supabaseAdmin.from('tenants').select('id, shop_name, plan, timezone, is_centralized_cashier, is_nlp_enabled').eq('id', barber.tenant_id).single();
+            if (tenantError) {
+                console.error('[TELEGRAM WEBHOOK ERROR] Error fetching tenant:', tenantError);
+            }
             const tenant = tenantData as any;
             const tz = tenant?.timezone ?? 'Asia/Jakarta';
             const isCentralized = tenant?.is_centralized_cashier ?? false;
