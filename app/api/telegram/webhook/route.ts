@@ -32,6 +32,7 @@ const formatRupiah = (n: number) => new Intl.NumberFormat('id-ID').format(n);
 async function sendTelegramMessage(chatId: string | number, text: string, replyMarkup?: any) {
     if (!BOT_TOKEN) return;
     const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
+    const resolvedMarkup = replyMarkup?.reply_markup ? replyMarkup.reply_markup : replyMarkup;
     await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -39,7 +40,7 @@ async function sendTelegramMessage(chatId: string | number, text: string, replyM
             chat_id: chatId,
             text: text,
             parse_mode: 'HTML',
-            reply_markup: replyMarkup
+            ...(resolvedMarkup ? { reply_markup: resolvedMarkup } : {})
         })
     });
 }
@@ -47,6 +48,7 @@ async function sendTelegramMessage(chatId: string | number, text: string, replyM
 async function editTelegramMessage(chatId: string | number, messageId: number, text: string, replyMarkup?: any) {
     if (!BOT_TOKEN) return;
     const url = `https://api.telegram.org/bot${BOT_TOKEN}/editMessageText`;
+    const resolvedMarkup = replyMarkup?.reply_markup ? replyMarkup.reply_markup : replyMarkup;
     await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -55,7 +57,7 @@ async function editTelegramMessage(chatId: string | number, messageId: number, t
             message_id: messageId,
             text: text,
             parse_mode: 'HTML',
-            ...(replyMarkup ? { reply_markup: replyMarkup } : {})
+            ...(resolvedMarkup ? { reply_markup: resolvedMarkup } : {})
         })
     });
 }
