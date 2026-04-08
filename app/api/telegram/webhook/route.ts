@@ -14,6 +14,12 @@ import {
   getCartTotal, formatCart,
   type BotContext, type CartItem
 } from '@/lib/bot-session';
+import {
+  isRateLimited,
+  looksLikeOrder,
+  parseOrderFromText,
+  type NLPResult
+} from '@/lib/nlp-kasir';
 import crypto from 'crypto';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -123,135 +129,125 @@ async function getPosServicesForBarber(tenantId: string, barberId: string) {
     }).sort((a: any, b: any) => a.sort_order - b.sort_order);
 }
 
-// Menampilkan menu layanan (digunakan berulang)
-async function showServicesMenu(chatId: string, messageId: number | null, tenantId: string, barber: any, tz: string) {
-    const services = await getPosServicesForBarber(tenantId, barber.id);
+async function showBarberList(
+    chatId: string,
+    messageId: number | null,
+    tenantId: string,
+    senderBarberId: string,
+    session: any,
+    timezone: string
+) {
+    const { data: barbers } = await supabaseAdmin
+        .from('barbers')
+        .select('id, name')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .eq('role', 'barber')
+        .order('name', { ascending: true });
 
-    if (services.length === 0) {
-        const msg = `Halo <b>${barber.name}</b>! 💈\n\nBelum ada layanan kasir yang tersedia.\nMinta Owner untuk menambahkan layanan tipe <b>${SERVICE_TYPES.POS_KASIR}</b> di menu Admin → Layanan.`;
+    if (!barbers || barbers.length === 0) {
+        const msg = `⚠️ Tidak ada barber aktif saat ini.\nMinta Owner untuk mengaktifkan barber terlebih dahulu.`;
         if (messageId) await editTelegramMessage(chatId, messageId, msg);
         else await sendTelegramMessage(chatId, msg);
+        await clearSession(chatId, tenantId);
         return;
     }
 
-    const inline_keyboard = services.map((srv: any) => {
-        let priceLabel: string;
-        if (srv.price_type === 'range') {
-            priceLabel = `${formatIDR(srv.final_price_min || 0)} – ${formatIDR(srv.final_price_max || 0)}`;
-        } else if (srv.price_type === 'custom') {
-            priceLabel = 'Harga Custom';
-        } else {
-            priceLabel = formatIDR(srv.final_price);
-        }
+    const buttons = barbers.map(b => [{
+        text: `✂️ ${b.name}`,
+        callback_data: `barber_pick_${b.id}`
+    }]);
 
-        return [{
-            text: `${srv.name} - ${priceLabel}`,
-            callback_data: `pos_${srv.id}`
-        }];
-    });
-
-    inline_keyboard.push([{ text: "❌ Batalkan", callback_data: "cancel_pos" }]);
-
-    const text = `Halo <b>${barber.name}</b>! 💈\nPilih layanan yang baru saja Anda kerjakan untuk dicatat ke kasir:`;
+    const text = `👤 Pelanggan: <b>${session.context.customer_name}</b>\n\n✂️ <b>Pilih Barber yang Mengerjakan:</b>`;
     if (messageId) {
-        await editTelegramMessage(chatId, messageId, text, { inline_keyboard });
+        await editTelegramMessage(chatId, messageId, text, { reply_markup: { inline_keyboard: buttons } });
     } else {
-        await sendTelegramMessage(chatId, text, { inline_keyboard });
+        await sendTelegramMessage(chatId, text, { reply_markup: { inline_keyboard: buttons } });
     }
 }
 
-// Helper untuk checkout ke database
-async function finalizeTransaction(
-    chatId: string, 
-    messageId: number | null, 
-    tenant: any, 
-    barber: any, 
-    sessionContext: BotContext, 
-    paymentMethod: string, 
-    kembalian: number = 0
+// STEP 3 - Fungsi daftar layanan
+async function showServiceList(
+    chatId: string,
+    messageId: number | null,
+    tenantId: string,
+    barberId: string,
+    session: any,
+    timezone: string
 ) {
-    const cart = sessionContext.cart || [];
-    if (cart.length === 0) return;
+    const services = await getPosServicesForBarber(tenantId, barberId);
 
-    const groupId = crypto.randomUUID();
-    
-    // Insert bookings
-    for (const item of cart) {
-        await supabaseAdmin
-            .from('bookings')
-            .insert({
-                tenant_id: tenant.id,
-                barber_id: barber.id,
-                service_id: item.service_id,
-                service_type: SERVICE_TYPES.POS_KASIR,
-                customer_id: sessionContext.customer_id || null,
-                start_time: new Date().toISOString(),
-                end_time: new Date(Date.now() + 30 * 60000).toISOString(),
-                status: 'completed',
-                final_price: item.price,
-                payment_method: paymentMethod,
-                booking_source: 'telegram_walk_in',
-                booking_group_id: groupId
-            });
+    if (!services || services.length === 0) {
+        const msg = `⚠️ Belum ada layanan yang tersedia.\nMinta Owner untuk menambahkan layanan kasir.`;
+        if (messageId) await editTelegramMessage(chatId, messageId, msg);
+        else await sendTelegramMessage(chatId, msg);
+        await clearSession(chatId, tenantId);
+        return;
     }
 
-    // Update Customer visits CRM Level 3
-    if (sessionContext.customer_id) {
-        const { data: cust } = await supabaseAdmin.from('customers').select('total_visits').eq('id', sessionContext.customer_id).single();
-        if (cust) {
-            await supabaseAdmin.from('customers').update({
-                total_visits: (cust.total_visits || 0) + 1,
-                last_visit_at: new Date().toISOString()
-            }).eq('id', sessionContext.customer_id);
+    const cart = session.context.cart ?? [];
+    const cartText = cart.length > 0
+        ? `\n\n🛒 <b>Keranjang:</b>\n${formatCart(cart, timezone)}`
+        : '';
+
+    const buttons = services.slice(0, 16).map((svc: any) => {
+        let priceLabel = 'Harga Custom';
+        if (svc.price_type === 'fixed') {
+            priceLabel = `Rp ${formatRupiah(svc.final_price || 0)}`;
+        } else if (svc.price_type === 'range') {
+            priceLabel = `Rp ${formatRupiah(svc.final_price_min || 0)}–${formatRupiah(svc.final_price_max || 0)}`;
         }
-    }
 
-    const tz = tenant.timezone ?? 'Asia/Jakarta';
-    const total = getCartTotal(cart);
-    let receiptMessage = `🧾 <b>TRANSAKSI TERSIMPAN</b>\n` +
-        `━━━━━━━━━━━━━━━━━━━━\n`;
-    
-    for (const item of cart) {
-        receiptMessage += `${item.service_name.padEnd(20)} Rp ${formatRupiah(item.price)}${item.qty > 1 ? ` x${item.qty}` : ''}\n`;
-    }
-    
-    receiptMessage += `━━━━━━━━━━━━━━━━━━━━\n` +
-        `<b>TOTAL: Rp ${formatRupiah(total)}</b>\n` +
-        `Metode: ${paymentMethod.toUpperCase()}\n`;
-        
-    if (paymentMethod === 'cash' && kembalian > 0) {
-        receiptMessage += `Kembalian: Rp ${formatRupiah(kembalian)}\n`;
-    }
-    
-    receiptMessage += `Waktu : ${formatReceiptDateTime(tz)}\n`;
-    
-    if (sessionContext.customer_name && sessionContext.customer_name !== 'Pelanggan Umum') {
-        const { data: cData } = await supabaseAdmin.from('customers').select('total_visits').eq('id', sessionContext.customer_id).single();
-        const visits = cData?.total_visits || 1;
-        receiptMessage += `\n⭐ Terima kasih, ${sessionContext.customer_name}!\nKunjungan ke-${visits} kamu hari ini 🎉\n`;
-    }
+        return {
+            text: `${svc.name} (${priceLabel})`,
+            callback_data: `svc_pick_${svc.id}`
+        };
+    });
 
-    receiptMessage += `━━━━━━━━━━━━━━━━━━━━\nTerima kasih! 💈`;
+    const keyboard = buttons.map((btn: any) => [btn]);
 
-    const replyMarkup = {
-        inline_keyboard: [[
-            { text: '↩️ Batalkan Transaksi Ini', callback_data: `void_req_${groupId}` }
-        ]]
-    };
+    const text = `💇 <b>Pilih Layanan</b>\nPelanggan: <b>${session.context.customer_name}</b>${cartText}`;
+    
+    if (messageId) {
+        await editTelegramMessage(chatId, messageId, text, { reply_markup: { inline_keyboard: keyboard } });
+    } else {
+        await sendTelegramMessage(chatId, text, { reply_markup: { inline_keyboard: keyboard } });
+    }
+}
+
+// STEP 5 - Fungsi add more
+async function askAddMore(
+    chatId: string,
+    messageId: number | null,
+    timezone: string,
+    cart: CartItem[],
+    customerName: string
+) {
+    const cartText = formatCart(cart, timezone);
+    const itemCount = cart.reduce((sum, c) => sum + c.qty, 0);
+
+    const text = `✅ <b>Layanan ditambahkan!</b>\n\n👤 Pelanggan: <b>${customerName}</b>\n🛒 <b>Keranjang (${itemCount} item):</b>\n${cartText}\n\nTambah layanan lain?`;
+    
+    const inline_keyboard = [
+        [
+            { text: '➕ Iya, Tambah Lagi', callback_data: 'cart_add_more' },
+            { text: '✅ Tidak, Lanjut Bayar', callback_data: 'cart_checkout' }
+        ],
+        [
+            { text: '🗑️ Hapus / Edit Item', callback_data: 'cart_edit_list' }
+        ]
+    ];
 
     if (messageId) {
-        await editTelegramMessage(chatId, messageId, receiptMessage, replyMarkup);
+        await editTelegramMessage(chatId, messageId, text, { reply_markup: { inline_keyboard } });
     } else {
-        await sendTelegramMessage(chatId, receiptMessage, replyMarkup);
+        await sendTelegramMessage(chatId, text, { reply_markup: { inline_keyboard } });
     }
-
-    await clearSession(chatId.toString(), tenant.id);
 }
 
 // Mock WA Gateway (Logging for Void Approval)
 async function sendWhatsAppToOwner(tenantId: string, message: string) {
     console.log(`[WA_TO_OWNER_MOCK] Tenant: ${tenantId} | Message: ${message}`);
-    // Untuk implementasi asli, panggil service pengiriman WA API di sini.
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -268,7 +264,7 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
 
-        // ─── CABANG 1: ADA PESAN TEKS MASUK ───
+        // ─── CABANG 1: TEKS MASUK ───
         if (body.message && body.message.text) {
             const chatId = body.message.chat.id.toString();
             const text = body.message.text.trim();
@@ -279,128 +275,109 @@ export async function POST(request: NextRequest) {
             if (textLower === '/daftar' || textLower === '/id') {
                 const { data: existingBarber } = await supabaseAdmin.from('barbers').select('id, name, tenant_id').eq('telegram_chat_id', chatId).single();
                 if (existingBarber) {
-                    await sendTelegramMessage(chatId, `✅ <b>Kamu sudah terdaftar sebagai kapster aktif!</b>\n\nNama   : ${existingBarber.name}\nChat ID: <code>${chatId}</code>\n\nKetik /kasir untuk mulai.`);
+                    await sendTelegramMessage(chatId, `✅ <b>Kamu sudah terdaftar!</b>\n\nNama   : ${existingBarber.name}\nChat ID: <code>${chatId}</code>\n\nKetik /kasir untuk mulai.`);
                 } else {
-                    const chatIdPadded = ` ${chatId} `;
-                    const boxWidth = chatIdPadded.length + 2;
-                    const topBorder = '┌' + '─'.repeat(boxWidth) + '┐';
-                    const bottomBorder = '└' + '─'.repeat(boxWidth) + '┘';
-                    const middle = '│ ' + chatIdPadded + ' │';
-                    await sendTelegramMessage(chatId, `👋 <b>Halo!</b> Berikut informasi akun Telegram kamu:\n\n📋 <b>Chat ID kamu:</b>\n<code>${topBorder}\n${middle}\n${bottomBorder}</code>\n\nKirimkan angka di atas ke Owner/Admin toko kamu.\nMinta mereka input di menu:\n<b>Admin → Kelola Barber → [nama kamu] → Hubungkan Telegram</b>\n\nSetelah terdaftar, ketik /kasir untuk mulai.`);
+                    await sendTelegramMessage(chatId, `👋 <b>Halo!</b> Berikut informasi akun Telegram kamu:\n\n📋 <b>Chat ID kamu:</b>\n<code>${chatId}</code>\n\nKirimkan angka di atas ke Owner/Admin toko kamu.\nMinta mereka input di menu:\n<b>Admin → Kelola Barber → [nama kamu] → Hubungkan Telegram</b>\n\nSetelah terdaftar, ketik /kasir untuk mulai.`);
                 }
                 return NextResponse.json({ ok: true });
             }
 
-            const { data: barber, error: barberError } = await supabaseAdmin.from('barbers').select('id, name, tenant_id').eq('telegram_chat_id', chatId).single();
-            if (barberError || !barber) {
-                await sendTelegramMessage(chatId, `❌ <b>Akses Ditolak</b>\n\nAkun Telegram kamu belum terhubung ke sistem kasir.\n\nKetik /daftar untuk melihat Chat ID kamu, lalu kirimkan angkanya ke Owner/Admin toko.`);
+            const { data: barber } = await supabaseAdmin.from('barbers').select('id, name, tenant_id').eq('telegram_chat_id', chatId).single();
+            if (!barber) {
+                await sendTelegramMessage(chatId, `❌ <b>Akses Ditolak</b>\n\nAkun Telegram kamu belum terhubung ke sistem kasir.\nKetik /daftar untuk melihat Chat ID kamu.`);
                 return NextResponse.json({ ok: true });
             }
 
-            const { data: tenantData } = await supabaseAdmin.from('tenants').select('id, plan, is_active, plan_expires_at, timezone').eq('id', barber.tenant_id).single();
+            const { data: tenantData } = await supabaseAdmin.from('tenants').select('id, name, plan, timezone, is_centralized_cashier, is_nlp_enabled').eq('id', barber.tenant_id).single();
             const tenant = tenantData as any;
             const tz = tenant?.timezone ?? 'Asia/Jakarta';
+            const isCentralized = tenant?.is_centralized_cashier ?? false;
 
             if (!tenant || !canUseKasir(tenant.plan || 'trial')) {
-                await sendTelegramMessage(chatId, `⚠️ <b>Fitur kasir tidak tersedia untuk plan ini.</b>\n\nToko kamu belum berlangganan paket yang mendukung fitur kasir.\nMinta Owner untuk upgrade ke plan <b>Pro</b> atau <b>Business</b>.`);
+                await sendTelegramMessage(chatId, `⚠️ <b>Fitur kasir tidak tersedia.</b>\nCek paket berlangganan toko kamu.`);
                 return NextResponse.json({ ok: true });
             }
 
-            // --- STATE MACHINE ---
+            // --- STATE MACHINE TEXT ---
             const session = await getSession(chatId, tenant.id);
+
             if (session) {
                 const ctx = session.context as any;
 
-                // 1. Awaiting Customer CRM input
+                // STEP 2A - Input nama pelanggan
                 if (session.step === 'awaiting_customer') {
-                    if (ctx.crm_action === 'search') {
-                        if (textLower === 'skip' || textLower === 'umum' || textLower === 'tanpa nama' || textLower === '-') {
-                            await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...ctx, customer_id: null, customer_name: 'Pelanggan Umum', crm_action: undefined });
-                            await showServicesMenu(chatId, null, tenant.id, barber, tz);
-                            return NextResponse.json({ ok: true });
-                        }
-
-                        const { data: customers } = await supabaseAdmin.from('customers').select('*').eq('tenant_id', tenant.id).or(`name.ilike.%${text}%,phone.ilike.%${text}%`).limit(5);
-                        
-                        if (!customers || customers.length === 0) {
-                            // Langsung otomatis daftarkan tanpa rewel nanya no HP
-                            const { data: newCustomer } = await supabaseAdmin.from('customers').insert({
-                                tenant_id: tenant.id,
-                                name: text,
-                                phone: null
-                            }).select().single();
-
-                            if (newCustomer) {
-                                await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...ctx, customer_id: newCustomer.id, customer_name: newCustomer.name, crm_action: undefined, new_customer_name: undefined });
-                                await sendTelegramMessage(chatId, `✅ Pelanggan <b>${newCustomer.name}</b> otomatis terdaftar.`);
-                                await showServicesMenu(chatId, null, tenant.id, barber, tz);
-                            }
-                        } else {
-                            // Ditemukan. Simpan teks aslinya sebagai backup jika ternyata bukan pengunjung lama.
-                            await upsertSession(chatId, tenant.id, barber.id, 'awaiting_customer', { ...ctx, crm_action: 'search', new_customer_name: text });
-                            const inline_keyboard = customers.map(c => ([{
-                                text: `${c.name} (${c.phone || '-'}) — ${c.total_visits} kunjungan`,
-                                callback_data: `crm_pick_${c.id}`
-                            }]));
-                            inline_keyboard.push([{ text: `➕ Bukan, daftarkan ${text} sbg baru`, callback_data: 'crm_force_new' }]);
-                            inline_keyboard.push([{ text: '⏭️ Lewati (Pelanggan Umum)', callback_data: 'crm_skip' }]);
-                            await sendTelegramMessage(chatId, `Ditemukan pelanggan dengan nama mirip:`, { inline_keyboard });
-                        }
-                    }
-                    return NextResponse.json({ ok: true });
-                }
-
-                // 2. Awaiting Price Input (Custom nominal)
-                if (session.step === 'awaiting_price' && ctx.awaiting_free_input) {
-                    const amount = parseInt(text.replace(/\D/g, ''), 10);
-                    if (isNaN(amount) || amount <= 0) {
-                        await sendTelegramMessage(chatId, `⚠️ Masukkan angka yang valid.`);
+                    const customerName = text;
+                    if (customerName.length < 2) {
+                        await sendTelegramMessage(chatId, `⚠️ Nama terlalu pendek. Ketik minimal 2 huruf:`);
                         return NextResponse.json({ ok: true });
                     }
-                    if (ctx.price_type === 'range' && (amount < ctx.price_min || amount > ctx.price_max)) {
-                        await sendTelegramMessage(chatId, `⚠️ Nominal tidak valid. Harus antara Rp ${formatIDR(ctx.price_min)} – Rp ${formatIDR(ctx.price_max)}.\n\nCoba lagi:`);
+                    if (customerName.length > 50) {
+                        await sendTelegramMessage(chatId, `⚠️ Nama terlalu panjang. Maksimal 50 karakter:`);
                         return NextResponse.json({ ok: true });
                     }
-                    // Valid! Add to cart.
-                    const cart = addToCart(ctx.cart || [], { service_id: ctx.service_id, service_name: ctx.service_name, price: amount });
-                    await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...ctx, cart, awaiting_free_input: false, price_type: undefined, price_min: undefined, price_max: undefined, service_id: undefined, service_name: undefined });
-                    const cartText = formatCart(cart, tz);
-                    await sendTelegramMessage(chatId, `✅ *${ctx.service_name}* ditambahkan\n\n🛒 *Keranjang saat ini:*\n${cartText}\n\nTambah layanan lain?`, {
-                        reply_markup: { inline_keyboard: [
-                            [{ text: '➕ Tambah Layanan', callback_data: 'cart_add_more' }, { text: '✅ Bayar Sekarang', callback_data: 'cart_checkout' }],
-                            [{ text: '🗑️ Kosongkan Keranjang', callback_data: 'cart_clear' }]
-                        ]}
+                    
+                    await upsertSession(chatId, tenant.id, barber.id, 'idle', {
+                        ...ctx,
+                        customer_name: customerName,
+                        customer_id: null,
+                        selected_barber_id: isCentralized ? undefined : barber.id
                     });
+                    
+                    const freshSession = await getSession(chatId, tenant.id);
+                    if (!freshSession) {
+                        await sendTelegramMessage(chatId, '❌ Gagal menyimpan sesi. Coba /kasir lagi.');
+                        return NextResponse.json({ ok: true });
+                    }
+
+                    if (isCentralized) {
+                        await showBarberList(chatId, null, tenant.id, barber.id, freshSession, tz);
+                    } else {
+                        await showServiceList(chatId, null, tenant.id, barber.id, freshSession, tz);
+                    }
                     return NextResponse.json({ ok: true });
                 }
 
-                // 3. Awaiting Cash Payment Nominal
-                if (session.step === 'awaiting_payment' && ctx.payment_method === 'cash' && ctx.awaiting_cash_input) {
-                    let kembalian = 0;
-                    if (textLower === 'pas') {
-                        kembalian = 0;
-                    } else {
-                        const bayar = parseInt(text.replace(/\D/g, ''));
-                        if (isNaN(bayar) || bayar < ctx.total_price) {
-                            await sendTelegramMessage(chatId, `⚠️ Nominal tidak valid atau kurang dari total.\nTotal: Rp ${ctx.total_price.toLocaleString('id-ID')}\nCoba lagi:`);
+                // STEP 4B - Input harga custom / range
+                if (session.step === 'awaiting_price') {
+                    const price = parseInt(text.replace(/\D/g, ''), 10);
+                    if (isNaN(price) || price <= 0) {
+                        await sendTelegramMessage(chatId, `⚠️ Nominal tidak valid. Ketik angka saja\n_(contoh: 75000)_:`);
+                        return NextResponse.json({ ok: true });
+                    }
+
+                    if (ctx.pending_service?.price_type === 'range') {
+                        const { price_min, price_max } = ctx.pending_service;
+                        if (price < price_min || price > price_max) {
+                            await sendTelegramMessage(chatId, `⚠️ Nominal harus antara Rp ${formatRupiah(price_min)} – Rp ${formatRupiah(price_max)}\nCoba lagi:`);
                             return NextResponse.json({ ok: true });
                         }
-                        kembalian = bayar - ctx.total_price;
                     }
-                    await finalizeTransaction(chatId, null, tenant, barber, ctx, 'cash', kembalian);
+
+                    const updatedCart = addToCart(ctx.cart ?? [], {
+                        service_id: ctx.pending_service.service_id,
+                        service_name: ctx.pending_service.service_name,
+                        price
+                    });
+
+                    await upsertSession(chatId, tenant.id, barber.id, 'idle', {
+                        ...ctx,
+                        cart: updatedCart,
+                        pending_service: undefined
+                    });
+
+                    await askAddMore(chatId, null, tz, updatedCart, ctx.customer_name);
                     return NextResponse.json({ ok: true });
                 }
             }
 
-            // ── COMMAND /start atau /kasir ──
+            // COMMAND /kasir
             if (textLower === '/start' || textLower === '/kasir') {
-                // Mulai sesi baru, default ke pencarian pelanggan. Memungkinkan user langsung mengetik nama.
-                await upsertSession(chatId, tenant.id, barber.id, 'awaiting_customer', { crm_action: 'search' });
-                await sendTelegramMessage(chatId, `💈 *Transaksi Baru*\n\nSilakan langsung <b>ketik nama pelanggan</b> (contoh: Budi) atau pilih "Tanpa Nama" di bawah ini:`, {
+                await clearSession(chatId, tenant.id);
+                await upsertSession(chatId, tenant.id, barber.id, 'awaiting_customer', { cart: [] });
+                
+                await sendTelegramMessage(chatId, `💈 <b>Transaksi Baru</b>\n\nKetik nama pelanggan,\natau pilih tombol di bawah:`, {
                     reply_markup: {
-                        inline_keyboard: [
-                            [{ text: '👤 Lanjutkan Tanpa Nama', callback_data: 'crm_skip' }],
-                        ]
+                        inline_keyboard: [[ { text: '👤 Tanpa Nama', callback_data: 'customer_skip' } ]]
                     }
                 });
             } else if (textLower === '/laporan') {
@@ -409,31 +386,176 @@ export async function POST(request: NextRequest) {
 
                 const { data: todayBookings } = await supabaseAdmin
                     .from('bookings')
-                    .select('final_price, services(price)')
+                    .select('final_price')
                     .eq('tenant_id', tenant.id)
                     .eq('barber_id', barber.id)
-                    .in('booking_source', ['pos_kasir', 'telegram_walk_in'])
+                    .in('booking_source', ['telegram_walk_in', 'pos_kasir'])
                     .eq('status', 'completed')
                     .gte('created_at', startUTC)
                     .lte('created_at', endUTC);
 
                 const count = todayBookings?.length || 0;
-                const total = todayBookings?.reduce((sum, b: any) => sum + (b.final_price ?? b.services?.price ?? 0), 0) || 0;
+                const total = todayBookings?.reduce((sum, b: any) => sum + (b.final_price ?? 0), 0) || 0;
 
-                await sendTelegramMessage(chatId,
-                    `📊 <b>Laporan Shift Anda Hari Ini</b>\n` +
-                    `📅 ${todayLocal} (${getTimezoneLabel(tz)})\n\n` +
-                    `Total Kepala: ${count} Pelanggan\n` +
-                    `Omset Kasir Walk-In: Rp ${formatRupiah(total)}\n\n` +
-                    `<i>Kerja bagus, ${barber.name}!</i>`
-                );
+                await sendTelegramMessage(chatId, `📊 <b>Laporan Shift Anda Hari Ini</b>\n📅 ${todayLocal} (${getTimezoneLabel(tz)})\n\nTotal Kepala: ${count} Pelanggan\nOmset: Rp ${formatRupiah(total)}`);
             } else {
-                await sendTelegramMessage(chatId, `ℹ️ Sesi transaksi tidak aktif atau perintah tidak dikenali.\n\n<b>Gunakan perintah berikut:</b>\n/kasir — 🏪 Buka transaksi baru\n/laporan — 📊 Rekap shift hari ini\n/daftar — 🔑 Lihat Chat ID`);
+                if (!session || session.step === 'idle') {
+                    const nlpEnabled = tenant.is_nlp_enabled && !!process.env.GEMINI_API_KEY;
+
+                    if (!nlpEnabled) {
+                        await sendTelegramMessage(chatId, '⚠️ Ketuk /kasir untuk memulai transaksi.');
+                        return NextResponse.json({ ok: true });
+                    }
+
+                    // PRE-FILTER — jangan langsung call OpenAI/Gemini:
+                    const { data: allBarbers } = await supabaseAdmin
+                        .from('barbers')
+                        .select('id, name')
+                        .eq('tenant_id', tenant.id)
+                        .eq('is_active', true)
+                        .eq('role', 'barber');
+
+                    const { data: allServices } = await supabaseAdmin
+                        .from('services')
+                        .select('id, name, price, price_type, price_min, price_max')
+                        .eq('tenant_id', tenant.id)
+                        .eq('is_active', true)
+                        .eq('service_type', SERVICE_TYPES.POS_KASIR);
+
+                    const looksValid = looksLikeOrder(
+                        text,
+                        allBarbers?.map(b => b.name) ?? [],
+                        allServices?.map(s => s.name) ?? []
+                    );
+
+                    if (!looksValid) {
+                        await sendTelegramMessage(chatId, `⚠️ Tidak mengenali perintah ini.\nKetuk /kasir untuk mulai transaksi.`);
+                        return NextResponse.json({ ok: true });
+                    }
+
+                    if (isRateLimited(chatId)) {
+                        await sendTelegramMessage(chatId, `⏳ Terlalu cepat. Coba lagi sebentar.`);
+                        return NextResponse.json({ ok: true });
+                    }
+
+                    await sendTelegramMessage(chatId, '🤖 Memproses...');
+
+                    let nlpResult: NLPResult;
+                    try {
+                        nlpResult = await parseOrderFromText(
+                            text,
+                            allBarbers ?? [],
+                            allServices ?? [],
+                            isCentralized
+                        );
+                    } catch (err) {
+                        await sendTelegramMessage(chatId, `❌ Gagal memproses. Ketuk /kasir untuk manual.`);
+                        return NextResponse.json({ ok: true });
+                    }
+
+                    if (!nlpResult.isValid) {
+                        await sendTelegramMessage(chatId, `⚠️ Tidak bisa memproses:\n_${nlpResult.reason ?? 'Input tidak dikenali'}_\n\nKetuk /kasir untuk mulai manual.`);
+                        return NextResponse.json({ ok: true });
+                    }
+
+                    if (nlpResult.ambiguous_barber) {
+                        const tempSession = await upsertSession(
+                            chatId, tenant.id, barber.id,
+                            'idle',
+                            {
+                                cart: nlpResult.services.map((s: any) => {
+                                    const svc = allServices?.find(sv => sv.id === s.service_id);
+                                    return {
+                                        service_id: s.service_id,
+                                        service_name: svc?.name ?? 'Layanan',
+                                        price: s.fixed_price,
+                                        qty: 1,
+                                    };
+                                }),
+                                customer_name: nlpResult.customer_name ?? 'Pelanggan Umum',
+                                selected_barber_id: null,
+                                nlp_draft: true,
+                            } as any
+                        );
+
+                        await sendTelegramMessage(chatId, `🤖 Nama barber tidak jelas.\nPilih barber yang dimaksud:`);
+                        const freshSess = await getSession(chatId, tenant.id);
+                        await showBarberList(chatId, null, tenant.id, barber.id, freshSess, tz);
+                        return NextResponse.json({ ok: true });
+                    }
+
+                    const validatedServices = nlpResult.services.map((s: any) => {
+                        const svc = allServices?.find(sv => sv.id === s.service_id);
+                        if (!svc) return null;
+
+                        let finalPrice = s.fixed_price;
+                        if (svc.price_type === 'range') {
+                            const min = svc.price_min ?? 0;
+                            const max = svc.price_max ?? Infinity;
+                            finalPrice = Math.min(max, Math.max(min, s.fixed_price));
+                        }
+
+                        return {
+                            service_id: s.service_id,
+                            service_name: svc.name,
+                            price: finalPrice,
+                            qty: 1,
+                        };
+                    }).filter(Boolean);
+
+                    if (validatedServices.length === 0) {
+                        await sendTelegramMessage(chatId, `⚠️ Tidak ada layanan valid ditemukan.\nKetuk /kasir untuk manual.`);
+                        return NextResponse.json({ ok: true });
+                    }
+
+                    const totalNlp = validatedServices.reduce((sum: number, s: any) => sum + s!.price, 0);
+
+                    await upsertSession(chatId, tenant.id, barber.id, 'awaiting_payment', {
+                        cart: validatedServices as CartItem[],
+                        customer_name: nlpResult.customer_name ?? 'Pelanggan Umum',
+                        customer_id: null,
+                        selected_barber_id: nlpResult.barber_id ?? barber.id,
+                        selected_barber_name: nlpResult.barber_name ?? null,
+                        total_price: totalNlp,
+                        from_nlp: true,
+                    } as any);
+
+                    const cartLines = validatedServices.map((s: any) => `• ${s!.service_name} — Rp ${formatRupiah(s!.price)}`).join('\n');
+                    const barberLine = nlpResult.barber_name ? `✂️ Dikerjakan: *${nlpResult.barber_name}*\n` : '';
+
+                    await sendTelegramMessage(chatId, 
+                        `🤖 *Disiapkan oleh Kasir Pintar*\n` +
+                        `${'─'.repeat(28)}\n` +
+                        `👤 Pelanggan: *${nlpResult.customer_name ?? 'Pelanggan Umum'}*\n` +
+                        `${barberLine}` +
+                        `\n🛒 *Order:*\n${cartLines}\n` +
+                        `${'─'.repeat(28)}\n` +
+                        `💰 Total: *Rp ${formatRupiah(totalNlp)}*\n\n` +
+                        `Sudah benar? Pilih metode bayar:`, {
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: '💵 Cash', callback_data: 'pay_cash' },
+                                    { text: '📱 QRIS', callback_data: 'pay_qris' },
+                                ],
+                                [
+                                    { text: '🏦 Transfer', callback_data: 'pay_transfer' },
+                                ],
+                                [
+                                    { text: '❌ Batal & Mulai Manual', callback_data: 'confirm_cancel' }
+                                ]
+                            ]
+                        }
+                    });
+
+                } else if (session.step === 'confirming' || session.step === 'awaiting_payment') {
+                    await sendTelegramMessage(chatId, `ℹ️ Sesi transaksi tidak aktif atau perintah tidak dikenali.\n\n/kasir — Mulai transaksi baru\n/laporan — Rekap hari ini`);
+                }
             }
             return NextResponse.json({ ok: true });
         }
 
-        // ─── CABANG 2: ADA PENCETAN TOMBOL MASUK (Callback Query) ───
+        // ─── CABANG 2: CALLBACK MASUK ───
         if (body.callback_query) {
             const callbackId = body.callback_query.id;
             const data = body.callback_query.data;
@@ -442,185 +564,30 @@ export async function POST(request: NextRequest) {
 
             const { data: barber } = await supabaseAdmin.from('barbers').select('id, name, tenant_id').eq('telegram_chat_id', chatId).single();
             if (!barber) {
-                await editTelegramMessage(chatId, messageId, "Akses ditolak. Anda tidak terdaftar.");
-                await answerCallbackQuery(callbackId);
+                await answerCallbackQuery(callbackId, "Akses ditolak.");
                 return NextResponse.json({ ok: true });
             }
 
-            const { data: tenantData } = await supabaseAdmin.from('tenants').select('id, plan, is_active, plan_expires_at, timezone').eq('id', barber.tenant_id).single();
+            const { data: tenantData } = await supabaseAdmin.from('tenants').select('id, name, plan, timezone, is_centralized_cashier').eq('id', barber.tenant_id).single();
             const tenant = tenantData as any;
             if (!tenant) {
                 await answerCallbackQuery(callbackId, "Toko tidak ditemukan.");
                 return NextResponse.json({ ok: true });
             }
             const tz = tenant.timezone ?? 'Asia/Jakarta';
+            const isCentralized = tenant.is_centralized_cashier ?? false;
 
             const session = await getSession(chatId, tenant.id);
+            if (!session && !data.startsWith('void_req_')) {
+                await answerCallbackQuery(callbackId, "⏰ Sesi habis. Ketuk /kasir untuk mulai lagi.");
+                return NextResponse.json({ ok: true });
+            }
+
             const ctx = session?.context as any || {};
 
-            // CANCEL VOID
-            if (data === 'cancel_pos') {
-                await clearSession(chatId, tenant.id);
-                await editTelegramMessage(chatId, messageId, "❌ Proses kasir dibatalkan.");
-                await answerCallbackQuery(callbackId);
-                return NextResponse.json({ ok: true });
-            }
-
-            // —————————— CRM CUSTOMER FLOW ——————————
-            if (data === 'crm_skip') {
-                await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...ctx, customer_id: null, customer_name: 'Pelanggan Umum' });
-                await showServicesMenu(chatId, messageId, tenant.id, barber, tz);
-                await answerCallbackQuery(callbackId);
-                return NextResponse.json({ ok: true });
-            }
-            if (data === 'crm_force_new') {
-                if (ctx.new_customer_name) {
-                    const { data: newCustomer } = await supabaseAdmin.from('customers').insert({
-                        tenant_id: tenant.id,
-                        name: ctx.new_customer_name,
-                        phone: null
-                    }).select().single();
-                    if (newCustomer) {
-                        await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...ctx, customer_id: newCustomer.id, customer_name: newCustomer.name, crm_action: undefined, new_customer_name: undefined });
-                        await editTelegramMessage(chatId, messageId, `✅ <b>${newCustomer.name}</b> otomatis terdaftar!`);
-                        await showServicesMenu(chatId, null, tenant.id, barber, tz);
-                    }
-                }
-                await answerCallbackQuery(callbackId);
-                return NextResponse.json({ ok: true });
-            }
-            if (data.startsWith('crm_pick_')) {
-                const custId = data.replace('crm_pick_', '');
-                const { data: cust } = await supabaseAdmin.from('customers').select('id, name').eq('id', custId).single();
-                if (cust) {
-                    await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...ctx, customer_id: cust.id, customer_name: cust.name, crm_action: undefined, new_customer_name: undefined });
-                    await showServicesMenu(chatId, messageId, tenant.id, barber, tz);
-                }
-                await answerCallbackQuery(callbackId);
-                return NextResponse.json({ ok: true });
-            }
-
-            // —————————— SERVICE PICK FLOW ——————————
-            if (data.startsWith('pos_')) {
-                const serviceId = data.replace('pos_', '');
-                const services = await getPosServicesForBarber(barber.tenant_id, barber.id);
-                const svc = services.find((s: any) => s.id === serviceId);
-
-                if (!svc) {
-                    await answerCallbackQuery(callbackId, "Layanan tidak ditemukan.");
-                    return NextResponse.json({ ok: true });
-                }
-
-                if (svc.price_type === 'range') {
-                    const midPrice = Math.round((svc.final_price_min! + svc.final_price_max!) / 2 / 1000) * 1000;
-                    await upsertSession(chatId, tenant.id, barber.id, 'awaiting_price', {
-                        ...ctx, service_id: svc.id, service_name: svc.name,
-                        price_min: svc.final_price_min, price_max: svc.final_price_max, price_type: 'range'
-                    });
-                    await editTelegramMessage(chatId, messageId, `💈 *${svc.name}*\nRentang harga: Rp ${svc.final_price_min!.toLocaleString('id-ID')} – Rp ${svc.final_price_max!.toLocaleString('id-ID')}\n\nPilih nominal:`, {
-                        reply_markup: {
-                            inline_keyboard: [
-                                [{ text: `Rp ${svc.final_price_min!.toLocaleString('id-ID')} (Min)`, callback_data: `price_pick_${svc.id}_${svc.final_price_min}` }],
-                                [{ text: `Rp ${midPrice.toLocaleString('id-ID')} (Tengah)`, callback_data: `price_pick_${svc.id}_${midPrice}` }],
-                                [{ text: `Rp ${svc.final_price_max!.toLocaleString('id-ID')} (Maks)`, callback_data: `price_pick_${svc.id}_${svc.final_price_max}` }],
-                                [{ text: '✏️ Nominal Lain', callback_data: `price_custom_${svc.id}` }],
-                                [{ text: "❌ Batalkan", callback_data: `cart_clear` }]
-                            ]
-                        }
-                    });
-                } else if (svc.price_type === 'custom') {
-                    await upsertSession(chatId, tenant.id, barber.id, 'awaiting_price', {
-                        ...ctx, service_id: svc.id, service_name: svc.name, price_type: 'custom', awaiting_free_input: true
-                    });
-                    await editTelegramMessage(chatId, messageId, `✏️ <b>${svc.name}</b>\n\nKetik nominal harga untuk transaksi ini.\n_(Contoh: 50000)_`);
-                } else {
-                    // Fixed price: directly add to cart
-                    const cart = addToCart(ctx.cart || [], { service_id: svc.id, service_name: svc.name, price: svc.final_price });
-                    await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...ctx, cart });
-                    
-                    const cartText = formatCart(cart, tz);
-                    await editTelegramMessage(chatId, messageId, `✅ *${svc.name}* ditambahkan\n\n🛒 *Keranjang saat ini:*\n${cartText}\n\nTambah layanan lain?`, {
-                        reply_markup: { inline_keyboard: [
-                            [{ text: '➕ Tambah Layanan', callback_data: 'cart_add_more' }, { text: '✅ Bayar Sekarang', callback_data: 'cart_checkout' }],
-                            [{ text: '🗑️ Kosongkan Keranjang', callback_data: 'cart_clear' }]
-                        ]}
-                    });
-                }
-                await answerCallbackQuery(callbackId);
-                return NextResponse.json({ ok: true });
-            }
-
-            if (data.startsWith('price_pick_')) {
-                const parts = data.replace('price_pick_', '').split('_');
-                const serviceId = parts[0];
-                const amount = parseInt(parts[1], 10);
-                
-                const cart = addToCart(ctx.cart || [], { service_id: ctx.service_id || serviceId, service_name: ctx.service_name || 'Layanan', price: amount });
-                await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...ctx, cart, awaiting_free_input: false, price_type: undefined, price_min: undefined, price_max: undefined, service_id: undefined, service_name: undefined });
-                
-                const cartText = formatCart(cart, tz);
-                await editTelegramMessage(chatId, messageId, `✅ *${ctx.service_name || 'Layanan'}* ditambahkan\n\n🛒 *Keranjang saat ini:*\n${cartText}\n\nTambah layanan lain?`, {
-                    reply_markup: { inline_keyboard: [
-                        [{ text: '➕ Tambah Layanan', callback_data: 'cart_add_more' }, { text: '✅ Bayar Sekarang', callback_data: 'cart_checkout' }],
-                        [{ text: '🗑️ Kosongkan Keranjang', callback_data: 'cart_clear' }]
-                    ]}
-                });
-                await answerCallbackQuery(callbackId);
-                return NextResponse.json({ ok: true });
-            }
-
-            if (data.startsWith('price_custom_')) {
-                await upsertSession(chatId, tenant.id, barber.id, 'awaiting_price', { ...ctx, awaiting_free_input: true });
-                await editTelegramMessage(chatId, messageId, `✏️ Ketik nominal untuk *${ctx.service_name}*\n(Min: Rp ${formatIDR(ctx.price_min)} | Maks: Rp ${formatIDR(ctx.price_max)})\nContoh: 75000`);
-                await answerCallbackQuery(callbackId);
-                return NextResponse.json({ ok: true });
-            }
-
-            // —————————— CART FLOW ——————————
-            if (data === 'cart_add_more') {
-                await showServicesMenu(chatId, messageId, tenant.id, barber, tz);
-                await answerCallbackQuery(callbackId);
-                return NextResponse.json({ ok: true });
-            }
-            if (data === 'cart_clear') {
-                await clearSession(chatId, tenant.id);
-                await editTelegramMessage(chatId, messageId, "🗑️ Keranjang dikosongkan. Ketuk /kasir untuk mulai lagi.");
-                await answerCallbackQuery(callbackId);
-                return NextResponse.json({ ok: true });
-            }
-            if (data === 'cart_checkout') {
-                const total = getCartTotal(ctx.cart || []);
-                await upsertSession(chatId, tenant.id, barber.id, 'awaiting_payment', { ...ctx, total_price: total });
-                await editTelegramMessage(chatId, messageId, `💰 *Total: Rp ${total.toLocaleString('id-ID')}*\n\nPilih metode pembayaran:`, {
-                    reply_markup: {
-                        inline_keyboard: [
-                            [{ text: '💵 Cash', callback_data: `pay_cash_${session?.id}` }, { text: '📱 QRIS', callback_data: `pay_qris_${session?.id}` }],
-                            [{ text: '🏦 Transfer', callback_data: `pay_transfer_${session?.id}` }]
-                        ]
-                    }
-                });
-                await answerCallbackQuery(callbackId);
-                return NextResponse.json({ ok: true });
-            }
-
-            // —————————— PAYMENT FLOW ——————————
-            if (data.startsWith('pay_')) {
-                const pMethod = data.replace('pay_', '').split('_')[0]; // cash, qris, transfer
-                
-                if (pMethod === 'cash') {
-                    await upsertSession(chatId, tenant.id, barber.id, 'awaiting_payment', { ...ctx, payment_method: 'cash', awaiting_cash_input: true });
-                    await editTelegramMessage(chatId, messageId, `💵 *Pembayaran Cash*\n\nTotal: Rp ${(ctx.total_price || 0).toLocaleString('id-ID')}\n\nPelanggan bayar berapa?\n_(Ketik nominal, contoh: 50000)_\n_(Atau ketik "pas" jika uang pas)_`);
-                } else {
-                    await finalizeTransaction(chatId, messageId, tenant, barber, ctx, pMethod);
-                }
-                await answerCallbackQuery(callbackId);
-                return NextResponse.json({ ok: true });
-            }
-
-            // —————————— VOID FLOW ——————————
+            // CANCEL VOID FROM STRUCT
             if (data.startsWith('void_req_')) {
                 const groupId = data.replace('void_req_', '');
-                
                 const { data: bookings } = await supabaseAdmin.from('bookings').select('id, created_at, final_price, status').eq('booking_group_id', groupId).eq('tenant_id', tenant.id);
                 if (!bookings || bookings.length === 0) {
                     await answerCallbackQuery(callbackId, '❌ Transaksi tidak ditemukan');
@@ -637,17 +604,427 @@ export async function POST(request: NextRequest) {
                 if (ageMinutes <= 5) {
                     await supabaseAdmin.from('bookings').update({ status: 'cancelled' }).eq('booking_group_id', groupId).eq('tenant_id', tenant.id);
                     await supabaseAdmin.from('booking_voids').insert({ booking_id: bookings[0].id, tenant_id: tenant.id, requested_by: barber.id, status: 'auto_approved', reason: 'Dibatalkan oleh barber dalam 5 menit' });
-                    
-                    await editTelegramMessage(chatId, messageId, `✅ *Transaksi berhasil dibatalkan*\n\nSemua ${bookings.length} layanan dalam sesi ini telah dibatalkan otomatis.\nKetuk /kasir untuk transaksi baru.`);
+                    await editTelegramMessage(chatId, messageId, `✅ *Transaksi dibatalkan otomatis*\n(Dalam batas waktu 5 menit)\n\nKetuk /kasir untuk transaksi baru.`);
                 } else {
                     await supabaseAdmin.from('booking_voids').insert({ booking_id: bookings[0].id, tenant_id: tenant.id, requested_by: barber.id, status: 'pending' });
                     const totalVoid = bookings.reduce((sum: number, b: any) => sum + (b.final_price ?? 0), 0);
+                    await sendWhatsAppToOwner(tenant.id, `⚠️ *Permintaan Pembatalan*\nTotal: Rp ${formatRupiah(totalVoid)}\nDari barber: ${barber.name}\nWaktu: ${formatReceiptDateTime(tz)}`);
+                    await editTelegramMessage(chatId, messageId, `⏳ *Permintaan Dikirim ke Owner*\nSudah lewat 5 menit. Menunggu persetujuan Owner.`);
+                }
+                await answerCallbackQuery(callbackId);
+                return NextResponse.json({ ok: true });
+            }
+
+            // STEP 2B - Skip Customer
+            if (data === 'customer_skip') {
+                await upsertSession(chatId, tenant.id, barber.id, 'idle', {
+                    ...ctx,
+                    customer_name: 'Pelanggan Umum',
+                    customer_id: null,
+                    selected_barber_id: isCentralized ? undefined : barber.id
+                });
+                
+                const freshSession = await getSession(chatId, tenant.id);
+                if (!freshSession) {
+                    await answerCallbackQuery(callbackId, '❌ Gagal menyimpan sesi.');
+                    return NextResponse.json({ ok: true });
+                }
+
+                if (isCentralized) {
+                    await showBarberList(chatId, messageId, tenant.id, barber.id, freshSession, tz);
+                } else {
+                    await showServiceList(chatId, messageId, tenant.id, barber.id, freshSession, tz);
+                }
+                await answerCallbackQuery(callbackId);
+                return NextResponse.json({ ok: true });
+            }
+
+            // STEP 3 - Pick Barber (Centralized)
+            if (data.startsWith('barber_pick_')) {
+                const selectedBarberId = data.replace('barber_pick_', '');
+
+                await answerCallbackQuery(callbackId);
+
+                const { data: selectedBarber } = await supabaseAdmin
+                    .from('barbers')
+                    .select('id, name')
+                    .eq('id', selectedBarberId)
+                    .eq('tenant_id', tenant.id)
+                    .eq('is_active', true)
+                    .eq('role', 'barber')
+                    .single();
+
+                if (!selectedBarber) {
+                    await editTelegramMessage(chatId, messageId, `⚠️ Barber tidak valid. Pilih ulang:`);
+                    const sessionForFail = await getSession(chatId, tenant.id);
+                    await showBarberList(chatId, messageId, tenant.id, barber.id, sessionForFail, tz);
+                    return NextResponse.json({ ok: true });
+                }
+
+                await upsertSession(chatId, tenant.id, barber.id, 'idle', {
+                    ...ctx,
+                    selected_barber_id:   selectedBarberId,
+                    selected_barber_name: selectedBarber.name,
+                });
+
+                const freshSession = await getSession(chatId, tenant.id);
+                // Kita pass barberId dari pengirim as param,
+                // Namun ctx sudah ada selected_barber_id untuk dipakai di showServiceList.
+                await showServiceList(chatId, messageId, tenant.id, barber.id, freshSession, tz);
+                return NextResponse.json({ ok: true });
+            }
+
+            // STEP 4 - Pick Service
+            if (data.startsWith('svc_pick_')) {
+                const serviceId = data.replace('svc_pick_', '');
+                const services = await getPosServicesForBarber(tenant.id, barber.id);
+                const svc = services.find((s: any) => s.id === serviceId);
+
+                if (!svc) {
+                    await answerCallbackQuery(callbackId, '❌ Layanan tidak ditemukan');
+                    return NextResponse.json({ ok: true });
+                }
+
+                if (svc.price_type === 'fixed') {
+                    const updatedCart = addToCart(ctx.cart ?? [], {
+                        service_id: svc.id,
+                        service_name: svc.name,
+                        price: svc.final_price
+                    });
+                    await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...ctx, cart: updatedCart });
+                    await askAddMore(chatId, messageId, tz, updatedCart, ctx.customer_name);
+                } else if (svc.price_type === 'range') {
+                    const mid = Math.round((svc.final_price_min! + svc.final_price_max!) / 2 / 1000) * 1000;
+                    await upsertSession(chatId, tenant.id, barber.id, 'awaiting_price', {
+                        ...ctx,
+                        pending_service: {
+                            service_id: svc.id,
+                            service_name: svc.name,
+                            price_min: svc.final_price_min,
+                            price_max: svc.final_price_max,
+                            price_type: 'range'
+                        }
+                    });
                     
-                    await sendWhatsAppToOwner(tenant.id, `⚠️ *Permintaan Batalkan Transaksi*\n\nBarber meminta pembatalan transaksi:\nTotal: Rp ${totalVoid.toLocaleString('id-ID')}\nWaktu: ${formatReceiptDateTime(tz)}\n\nBuka Admin Panel untuk menyetujui atau menolak.`);
-                    await editTelegramMessage(chatId, messageId, `⏳ *Permintaan Dikirim ke Owner*\n\nTransaksi ini sudah lebih dari 5 menit.\nPermintaan pembatalan telah dikirim ke Owner.\n\nKamu akan mendapat notifikasi setelah Owner menyetujui atau menolaknya.`);
+                    await editTelegramMessage(chatId, messageId, `💈 <b>${svc.name}</b>\nRentang: Rp ${formatRupiah(svc.final_price_min!)} – Rp ${formatRupiah(svc.final_price_max!)}\n\nPilih nominal:`, {
+                        reply_markup: {
+                            inline_keyboard: [
+                                [{ text: `Rp ${formatRupiah(svc.final_price_min!)} (Min)`, callback_data: `price_${svc.id}_${svc.final_price_min}` }],
+                                [{ text: `Rp ${formatRupiah(mid)} (Tengah)`, callback_data: `price_${svc.id}_${mid}` }],
+                                [{ text: `Rp ${formatRupiah(svc.final_price_max!)} (Maks)`, callback_data: `price_${svc.id}_${svc.final_price_max}` }],
+                                [{ text: '✏️ Nominal Lain', callback_data: `price_custom_${svc.id}` }]
+                            ]
+                        }
+                    });
+                } else if (svc.price_type === 'custom') {
+                    await upsertSession(chatId, tenant.id, barber.id, 'awaiting_price', {
+                        ...ctx,
+                        pending_service: {
+                            service_id: svc.id,
+                            service_name: svc.name,
+                            price_type: 'custom',
+                            awaiting_free_input: true
+                        }
+                    });
+                    await editTelegramMessage(chatId, messageId, `💈 <b>${svc.name}</b>\n\nKetik nominal harga\n_(contoh: 75000)_:`);
                 }
                 
-                await answerCallbackQuery(callbackId, 'Permintaan void diproses');
+                await answerCallbackQuery(callbackId);
+                return NextResponse.json({ ok: true });
+            }
+
+            // STEP 4B - Price Callback
+            if (data.startsWith('price_')) {
+                if (data.startsWith('price_custom_')) {
+                    const serviceId = data.replace('price_custom_', '');
+
+                    await answerCallbackQuery(callbackId);
+
+                    const session = await getSession(chatId, tenant.id);
+                    if (!session) {
+                        await sendTelegramMessage(chatId, '⏰ Sesi habis. Ketuk /kasir untuk mulai lagi.');
+                        return NextResponse.json({ ok: true });
+                    }
+
+                    const { data: service } = await supabaseAdmin
+                        .from('services')
+                        .select('id, name, price_type, price_min, price_max')
+                        .eq('id', serviceId)
+                        .eq('tenant_id', tenant.id)
+                        .single();
+
+                    if (!service) {
+                        await editTelegramMessage(chatId, messageId, '⚠️ Layanan tidak ditemukan. Pilih ulang:');
+                        await showServiceList(chatId, messageId, tenant.id, barber.id, session, tz);
+                        return NextResponse.json({ ok: true });
+                    }
+
+                    await upsertSession(chatId, tenant.id, barber.id, 'awaiting_price', {
+                        ...ctx,
+                        pending_service: {
+                            service_id: service.id,
+                            service_name: service.name,
+                            price_type: 'range',
+                            price_min: service.price_min,
+                            price_max: service.price_max,
+                            awaiting_free_input: true,
+                        }
+                    });
+
+                    await editTelegramMessage(chatId, messageId, 
+                        `✏️ *Masukkan Nominal Sendiri*\n\n` +
+                        `Layanan: *${service.name}*\n` +
+                        `Rentang: Rp ${formatRupiah(service.price_min || 0)} – Rp ${formatRupiah(service.price_max || 0)}\n\n` +
+                        `Ketik nominalnya _(contoh: 45000)_:`
+                    );
+                } else {
+                    const [, serviceId, amountStr] = data.split('_');
+                    const price = parseInt(amountStr);
+                    
+                    if (ctx.pending_service?.price_type === 'range') {
+                        if (price < ctx.pending_service.price_min || price > ctx.pending_service.price_max) {
+                            await answerCallbackQuery(callbackId, '❌ Nominal di luar rentang harga');
+                            return NextResponse.json({ ok: true });
+                        }
+                    }
+
+                    const updatedCart = addToCart(ctx.cart ?? [], {
+                        service_id: ctx.pending_service.service_id,
+                        service_name: ctx.pending_service.service_name,
+                        price
+                    });
+
+                    await upsertSession(chatId, tenant.id, barber.id, 'idle', {
+                        ...ctx,
+                        cart: updatedCart,
+                        pending_service: undefined
+                    });
+
+                    await askAddMore(chatId, messageId, tz, updatedCart, ctx.customer_name);
+                }
+                await answerCallbackQuery(callbackId);
+                return NextResponse.json({ ok: true });
+            }
+
+            // STEP 6A - Add More
+            if (data === 'cart_add_more') {
+                const sess = await getSession(chatId, tenant.id);
+                await showServiceList(chatId, messageId, tenant.id, barber.id, sess, tz);
+                await answerCallbackQuery(callbackId);
+                return NextResponse.json({ ok: true });
+            }
+
+            // STEP 6 Edit - Edit List
+            if (data === 'cart_edit_list') {
+                const session = await getSession(chatId, tenant.id);
+                if (!session) {
+                    await answerCallbackQuery(callbackId);
+                    await sendTelegramMessage(chatId, '⏰ Sesi habis. Ketuk /kasir untuk mulai lagi.');
+                    return NextResponse.json({ ok: true });
+                }
+
+                await answerCallbackQuery(callbackId);
+
+                const cart = session.context.cart ?? [];
+
+                if (cart.length === 0) {
+                    await editTelegramMessage(chatId, messageId, '🛒 Keranjang sudah kosong.\nKetuk /kasir untuk mulai transaksi baru.');
+                    return NextResponse.json({ ok: true });
+                }
+
+                const itemButtons = cart.map((item: any, index: number) => [{
+                    text: `❌ Hapus: ${item.service_name} (Rp ${formatRupiah(item.price)})`,
+                    callback_data: `cart_rm_${index}`
+                }]);
+
+                itemButtons.push([{
+                    text: '🔙 Kembali',
+                    callback_data: 'cart_back_to_summary'
+                }]);
+
+                await editTelegramMessage(chatId, messageId, `🗑️ <b>Edit Keranjang</b>\n\nPilih item yang ingin dihapus:`, { reply_markup: { inline_keyboard: itemButtons } });
+                return NextResponse.json({ ok: true });
+            }
+
+            // STEP 6 Edit - Remove Item
+            if (data.startsWith('cart_rm_')) {
+                const session = await getSession(chatId, tenant.id);
+                if (!session) {
+                    await answerCallbackQuery(callbackId);
+                    await sendTelegramMessage(chatId, '⏰ Sesi habis. Ketuk /kasir untuk mulai lagi.');
+                    return NextResponse.json({ ok: true });
+                }
+
+                const indexStr = data.replace('cart_rm_', '');
+                const index = parseInt(indexStr);
+                const cart = [...(session.context.cart ?? [])];
+
+                if (isNaN(index) || index < 0 || index >= cart.length) {
+                    await answerCallbackQuery(callbackId, '⚠️ Item tidak ditemukan, mungkin sudah dihapus.');
+                    
+                    const refreshedButtons = cart.map((item: any, i: number) => [{
+                        text: `❌ Hapus: ${item.service_name} (Rp ${formatRupiah(item.price)})`,
+                        callback_data: `cart_rm_${i}`
+                    }]);
+                    refreshedButtons.push([{
+                        text: '🔙 Kembali',
+                        callback_data: 'cart_back_to_summary'
+                    }]);
+                    await editTelegramMessage(chatId, messageId, `🗑️ <b>Edit Keranjang</b> (Diperbarui)\n\nPilih item yang ingin dihapus:`, { reply_markup: { inline_keyboard: refreshedButtons } });
+                    return NextResponse.json({ ok: true });
+                }
+
+                const removedItem = cart[index];
+                cart.splice(index, 1);
+
+                await answerCallbackQuery(callbackId, `✅ "${removedItem.service_name}" dihapus`);
+
+                await upsertSession(chatId, tenant.id, barber.id, 'idle', { ...session.context, cart });
+
+                if (cart.length === 0) {
+                    await editTelegramMessage(chatId, messageId, `✅ <b>"${removedItem.service_name}"</b> dihapus.\n\nKeranjang kosong.`);
+                    const freshSession = await getSession(chatId, tenant.id);
+                    await showServiceList(chatId, messageId, tenant.id, barber.id, freshSession, tz);
+                } else {
+                    const freshSession = await getSession(chatId, tenant.id);
+                    await askAddMore(chatId, messageId, tz, freshSession!.context.cart ?? [], freshSession!.context.customer_name ?? 'Pelanggan Umum');
+                }
+                return NextResponse.json({ ok: true });
+            }
+
+            // STEP 6 Edit - Back to Summary
+            if (data === 'cart_back_to_summary') {
+                await answerCallbackQuery(callbackId);
+                const session = await getSession(chatId, tenant.id);
+                if (!session) {
+                    await sendTelegramMessage(chatId, '⏰ Sesi habis. Ketuk /kasir untuk mulai lagi.');
+                    return NextResponse.json({ ok: true });
+                }
+                await askAddMore(chatId, messageId, tz, session.context.cart ?? [], session.context.customer_name ?? 'Pelanggan Umum');
+                return NextResponse.json({ ok: true });
+            }
+
+            // STEP 6B - Checkout
+            if (data === 'cart_checkout') {
+                const cart = ctx.cart ?? [];
+                if (cart.length === 0) {
+                    await answerCallbackQuery(callbackId, '⚠️ Keranjang kosong!');
+                    return NextResponse.json({ ok: true });
+                }
+
+                const total = getCartTotal(cart);
+                await upsertSession(chatId, tenant.id, barber.id, 'awaiting_payment', { ...ctx, total_price: total });
+                
+                await editTelegramMessage(chatId, messageId, `💰 <b>Pilih Metode Pembayaran</b>\n\nTotal: <b>Rp ${formatRupiah(total)}</b>`, {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: '💵 Cash', callback_data: 'pay_cash' },
+                                { text: '📱 QRIS', callback_data: 'pay_qris' }
+                            ],
+                            [
+                                { text: '🏦 Transfer', callback_data: 'pay_transfer' }
+                            ]
+                        ]
+                    }
+                });
+                await answerCallbackQuery(callbackId);
+                return NextResponse.json({ ok: true });
+            }
+
+            // STEP 7 - Select Payment Method
+            if (data === 'pay_cash' || data === 'pay_qris' || data === 'pay_transfer') {
+                const methodMap: Record<string, string> = { pay_cash: 'cash', pay_qris: 'qris', pay_transfer: 'transfer' };
+                const methodLabel: Record<string, string> = { cash: '💵 Cash', qris: '📱 QRIS', transfer: '🏦 Transfer' };
+                
+                const paymentMethod = methodMap[data];
+                const cart = ctx.cart ?? [];
+                if (cart.length === 0) return NextResponse.json({ ok: true });
+                const total = getCartTotal(cart);
+
+                await upsertSession(chatId, tenant.id, barber.id, 'confirming', { ...ctx, payment_method: paymentMethod });
+
+                const cartLines = cart.map((item: any) => `• ${item.service_name}${item.qty > 1 ? ` ×${item.qty}` : ''} — Rp ${formatRupiah(item.price * item.qty)}`).join('\n');
+
+                await editTelegramMessage(chatId, messageId, `📋 <b>Konfirmasi Transaksi</b>\n${'─'.repeat(28)}\n👤 Pelanggan: <b>${ctx.customer_name}</b>\n✂️ Dikerjakan: <b>${ctx.selected_barber_name ?? 'Kamu'}</b>\n\n🧾 <b>Layanan:</b>\n${cartLines}\n${'─'.repeat(28)}\n💰 Total: <b>Rp ${formatRupiah(total)}</b>\n💳 Bayar: <b>${methodLabel[paymentMethod]}</b>\n${'─'.repeat(28)}\n\nSudah benar?`, {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '✅ Ya, Proses Transaksi', callback_data: 'confirm_yes' }],
+                            [{ text: '❌ Batal', callback_data: 'confirm_cancel' }]
+                        ]
+                    }
+                });
+                await answerCallbackQuery(callbackId);
+                return NextResponse.json({ ok: true });
+            }
+
+            // STEP 8A - Confirm Yes
+            if (data === 'confirm_yes') {
+                const freshSess = await getSession(chatId, tenant.id);
+                if (!freshSess || freshSess.step !== 'confirming') {
+                    await answerCallbackQuery(callbackId, '⚠️ Transaksi sudah diproses atau sesi habis.');
+                    return NextResponse.json({ ok: true });
+                }
+
+                await clearSession(chatId, tenant.id);
+
+                if (!ctx.cart || ctx.cart.length === 0) {
+                    await editTelegramMessage(chatId, messageId, '❌ Keranjang kosong. /kasir');
+                    await answerCallbackQuery(callbackId);
+                    return NextResponse.json({ ok: true });
+                }
+
+                if (!ctx.payment_method || !ctx.customer_name) {
+                    await editTelegramMessage(chatId, messageId, '❌ Data tidak lengkap. /kasir');
+                    await answerCallbackQuery(callbackId);
+                    return NextResponse.json({ ok: true });
+                }
+
+                const groupId = crypto.randomUUID();
+                const now = new Date().toISOString();
+                const inserts = ctx.cart.map((item: any) => ({
+                    tenant_id: tenant.id,
+                    barber_id: ctx.selected_barber_id ?? barber.id,
+                    service_id: item.service_id,
+                    customer_id: ctx.customer_id ?? null,
+                    customer_name: ctx.customer_name,
+                    status: 'completed',
+                    final_price: item.price,
+                    payment_method: ctx.payment_method,
+                    booking_source: 'telegram_walk_in',
+                    booking_group_id: groupId,
+                    created_at: now
+                }));
+
+                const { error } = await supabaseAdmin.from('bookings').insert(inserts);
+
+                if (error) {
+                    await editTelegramMessage(chatId, messageId, `❌ Gagal menyimpan.\nError: ${error.message}`);
+                    await answerCallbackQuery(callbackId);
+                    return NextResponse.json({ ok: true });
+                }
+
+                const total = getCartTotal(ctx.cart);
+                const waktu = formatReceiptDateTime(tz);
+                const cartLines = ctx.cart.map((item: any) => `• ${item.service_name}${item.qty > 1 ? ` x${item.qty}` : ''}: Rp ${formatRupiah(item.price)}`).join('\n');
+                const methodEmoji: Record<string, string> = { cash: '💵', qris: '📱', transfer: '🏦' };
+                const mEmoji = methodEmoji[ctx.payment_method] ?? '💳';
+
+                await editTelegramMessage(chatId, messageId, `✅ <b>TRANSAKSI BERHASIL</b>\n${'═'.repeat(28)}\n🏪 ${tenant.name}\n👤 ${ctx.customer_name}\n✂️ ${ctx.selected_barber_name ?? barber.name}\n📅 ${waktu}\n${'─'.repeat(28)}\n${cartLines}\n${'─'.repeat(28)}\n💰 <b>TOTAL: Rp ${formatRupiah(total)}</b>\n${mEmoji} ${ctx.payment_method.toUpperCase()}\n${'═'.repeat(28)}\n<i>Terima kasih! ✂️</i>`, {
+                    reply_markup: {
+                        inline_keyboard: [[ { text: '↩️ Batalkan Transaksi Ini', callback_data: `void_req_${groupId}` } ]]
+                    }
+                });
+
+                await answerCallbackQuery(callbackId, "Berhasil!");
+                return NextResponse.json({ ok: true });
+            }
+
+            // STEP 8B - Confirm Cancel
+            if (data === 'confirm_cancel') {
+                await clearSession(chatId, tenant.id);
+                await editTelegramMessage(chatId, messageId, `❌ <b>Transaksi dibatalkan.</b>\n\nKetuk /kasir untuk mulai transaksi baru.`);
+                await answerCallbackQuery(callbackId);
                 return NextResponse.json({ ok: true });
             }
 

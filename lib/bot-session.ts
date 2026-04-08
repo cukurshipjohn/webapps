@@ -50,22 +50,37 @@ export interface BotSession {
   step:       BotStep
   context:    BotContext
   expires_at: string
+  updated_at: string
 }
 
 // ─── GET SESSION ──────────────────────────────
-export async function getSession(
-  chatId: string,
-  tenantId: string
-): Promise<BotSession | null> {
+export async function getSession(chatId: string, tenantId: string): Promise<BotSession | null> {
   const { data } = await supabaseAdmin
     .from('telegram_bot_sessions')
     .select('*')
     .eq('chat_id', chatId)
     .eq('tenant_id', tenantId)
-    .gt('expires_at', new Date().toISOString())
     .maybeSingle()
 
-  return data as BotSession | null
+  if (!data) return null
+
+  // Cek TTL 15 menit:
+  const SESSION_TTL_MS = 15 * 60 * 1000
+  const updatedAt = new Date(data.updated_at).getTime()
+  const now = Date.now()
+
+  if (now - updatedAt > SESSION_TTL_MS) {
+    // Session expired — auto-clear:
+    await supabaseAdmin
+      .from('telegram_bot_sessions')
+      .delete()
+      .eq('chat_id', chatId)
+      .eq('tenant_id', tenantId)
+
+    return null
+  }
+
+  return data as BotSession
 }
 
 // ─── UPSERT SESSION ───────────────────────────
