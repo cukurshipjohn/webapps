@@ -1027,12 +1027,16 @@ export async function POST(request: NextRequest) {
                     tenant_id: tenant.id,
                     barber_id: ctx.selected_barber_id ?? barber.id,
                     service_id: item.service_id,
+                    service_type: 'pos_kasir',
                     customer_id: resolvedCustomerId,
                     status: 'completed',
                     final_price: item.price,
                     payment_method: ctx.payment_method,
+                    payment_status: 'paid',
                     booking_source: 'telegram_walk_in',
                     booking_group_id: groupId,
+                    start_time: now,
+                    end_time: now,
                     created_at: now
                 }));
 
