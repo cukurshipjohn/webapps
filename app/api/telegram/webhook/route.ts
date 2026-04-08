@@ -311,6 +311,10 @@ export async function POST(request: NextRequest) {
 
                 // STEP 2A - Input nama pelanggan
                 if (session.step === 'awaiting_customer') {
+                    // Jika user mengetik command di tengah sesi awaiting_customer, abaikan — biarkan command handler di bawah yang menangani
+                    if (textLower.startsWith('/')) {
+                        // jatuh ke blok command handler di bawah
+                    } else {
                     const customerName = text;
                     if (customerName.length < 2) {
                         await sendTelegramMessage(chatId, `⚠️ Nama terlalu pendek. Ketik minimal 2 huruf:`);
@@ -340,6 +344,7 @@ export async function POST(request: NextRequest) {
                         await showServiceList(chatId, null, tenant.id, barber.id, freshSession, tz);
                     }
                     return NextResponse.json({ ok: true });
+                    } // end else (non-command input)
                 }
 
                 // STEP 4B - Input harga custom / range
@@ -573,7 +578,7 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ ok: true });
             }
 
-            const { data: tenantData } = await supabaseAdmin.from('tenants').select('id, name, plan, timezone, is_centralized_cashier').eq('id', barber.tenant_id).single();
+            const { data: tenantData } = await supabaseAdmin.from('tenants').select('id, shop_name, plan, timezone, is_centralized_cashier').eq('id', barber.tenant_id).single();
             const tenant = tenantData as any;
             if (!tenant) {
                 await answerCallbackQuery(callbackId, "Toko tidak ditemukan.");
