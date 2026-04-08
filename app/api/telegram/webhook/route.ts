@@ -394,21 +394,56 @@ export async function POST(request: NextRequest) {
             } else if (textLower === '/laporan') {
                 const todayLocal = getTodayInTZ(tz);
                 const { start: startUTC, end: endUTC } = dateRangeToUTC(todayLocal, tz);
+                const isCashier = (barber as any).role === 'cashier';
 
-                const { data: todayBookings } = await supabaseAdmin
-                    .from('bookings')
-                    .select('final_price')
-                    .eq('tenant_id', tenant.id)
-                    .eq('barber_id', barber.id)
-                    .in('booking_source', ['telegram_walk_in', 'pos_kasir'])
-                    .eq('status', 'completed')
-                    .gte('created_at', startUTC)
-                    .lte('created_at', endUTC);
+                if (isCashier) {
+                    // ─── LAPORAN KASIR SENTRAL: semua transaksi toko hari ini, per barber ───
+                    const { data: allBookings } = await supabaseAdmin
+                        .from('bookings')
+                        .select('final_price, barber_id, barbers(name)')
+                        .eq('tenant_id', tenant.id)
+                        .in('booking_source', ['telegram_walk_in', 'pos_kasir'])
+                        .eq('status', 'completed')
+                        .gte('created_at', startUTC)
+                        .lte('created_at', endUTC);
 
-                const count = todayBookings?.length || 0;
-                const total = todayBookings?.reduce((sum, b: any) => sum + (b.final_price ?? 0), 0) || 0;
+                    const totalCount = allBookings?.length || 0;
+                    const totalOmset = allBookings?.reduce((sum, b: any) => sum + (b.final_price ?? 0), 0) || 0;
 
-                await sendTelegramMessage(chatId, `📊 <b>Laporan Shift Anda Hari Ini</b>\n📅 ${todayLocal} (${getTimezoneLabel(tz)})\n\nTotal Kepala: ${count} Pelanggan\nOmset: Rp ${formatRupiah(total)}`);
+                    // Breakdown per barber
+                    const perBarber: Record<string, { name: string; count: number; total: number }> = {};
+                    for (const b of (allBookings ?? [])) {
+                        const bid = (b as any).barber_id;
+                        const bname = (b as any).barbers?.name ?? 'Unknown';
+                        if (!perBarber[bid]) perBarber[bid] = { name: bname, count: 0, total: 0 };
+                        perBarber[bid].count++;
+                        perBarber[bid].total += (b as any).final_price ?? 0;
+                    }
+
+                    const breakdownLines = Object.values(perBarber)
+                        .sort((a, b) => b.total - a.total)
+                        .map(b => `  ✂️ ${b.name}: ${b.count} trx — Rp ${formatRupiah(b.total)}`)
+                        .join('\n');
+
+                    const msg = `📊 <b>Laporan Toko Hari Ini</b>\n📅 ${todayLocal} (${getTimezoneLabel(tz)})\n${'─'.repeat(28)}\n👥 Total Pelanggan: <b>${totalCount}</b>\n💰 Total Omset: <b>Rp ${formatRupiah(totalOmset)}</b>\n${'─'.repeat(28)}\n<b>Per Barber:</b>\n${breakdownLines || '  (Belum ada transaksi)'}`;
+                    await sendTelegramMessage(chatId, msg);
+                } else {
+                    // ─── LAPORAN BARBER INDIVIDUAL: hanya transaksi milik barber ini ───
+                    const { data: todayBookings } = await supabaseAdmin
+                        .from('bookings')
+                        .select('final_price')
+                        .eq('tenant_id', tenant.id)
+                        .eq('barber_id', barber.id)
+                        .in('booking_source', ['telegram_walk_in', 'pos_kasir'])
+                        .eq('status', 'completed')
+                        .gte('created_at', startUTC)
+                        .lte('created_at', endUTC);
+
+                    const count = todayBookings?.length || 0;
+                    const total = todayBookings?.reduce((sum, b: any) => sum + (b.final_price ?? 0), 0) || 0;
+                    await sendTelegramMessage(chatId, `📊 <b>Laporan Shift Kamu Hari Ini</b>\n📅 ${todayLocal} (${getTimezoneLabel(tz)})\n${'─'.repeat(28)}\n👤 Total Pelanggan: <b>${count}</b>\n💰 Omset: <b>Rp ${formatRupiah(total)}</b>`);
+                }
+
             } else {
                 if (!session || session.step === 'idle') {
                     // NLP aktif otomatis berdasarkan plan (trial, pro, business) tanpa flag manual
