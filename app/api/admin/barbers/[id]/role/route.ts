@@ -15,10 +15,10 @@ export async function PATCH(
     )
   }
 
-  const tenantId = req.headers.get('x-tenant-id')
+  const tenantId = user.tenant_id
   if (!tenantId) {
     return NextResponse.json(
-      { error: 'Tenant tidak ditemukan' }, { status: 400 }
+      { error: 'Akses ditolak: Anda tidak terhubung ke tenant mana pun.' }, { status: 403 }
     )
   }
 
