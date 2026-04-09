@@ -108,6 +108,7 @@ export default function DashboardPage() {
   const [editData, setEditData] = useState({ name: "", address: "", hobbies: "", photoUrl: "" });
   const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [loadingStats, setLoadingStats] = useState(false);
 
   // 1. Fetch data
   useEffect(() => {
@@ -140,7 +141,8 @@ export default function DashboardPage() {
         })
         .catch(() => {});
 
-      // Refresh history
+      // Refresh history & stats
+      setLoadingStats(true);
       fetch("/api/profile/history")
         .then(res => res.json())
         .then(data => {
@@ -149,7 +151,8 @@ export default function DashboardPage() {
             setHistory(data.history || []);
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => setLoadingStats(false));
     }
   }, [router]);
 
@@ -538,16 +541,49 @@ export default function DashboardPage() {
             {/* Stats Card */}
             <div className="p-6 rounded-2xl border shadow-lg" style={{ background: surface, borderColor: `${surface}80` }}>
               <h2 className="text-base font-semibold mb-4 flex items-center gap-2" style={{ color: primary }}>🏆 Statistik Member</h2>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl border text-center" style={{ background: bg, borderColor: `${surface}80` }}>
-                  <p className="text-3xl font-bold">{stats?.totalHaircuts || 0}</p>
-                  <p className="text-xs uppercase tracking-wider font-semibold mt-1" style={{ color: `${accent}50` }}>Total Cukur</p>
+              <p className="text-[10px] uppercase tracking-wider mb-3" style={{ color: `${accent}40` }}>
+                ✅ Hanya menghitung transaksi yang sudah selesai
+              </p>
+              {loadingStats ? (
+                // Skeleton loader
+                <div className="grid grid-cols-2 gap-3">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="p-4 rounded-xl border animate-pulse" style={{ background: bg, borderColor: `${surface}80` }}>
+                      <div className="h-7 w-16 rounded-md mx-auto mb-2" style={{ background: `${surface}` }} />
+                      <div className="h-3 w-20 rounded mx-auto" style={{ background: `${surface}` }} />
+                    </div>
+                  ))}
                 </div>
-                <div className="p-4 rounded-xl border text-center" style={{ background: bg, borderColor: `${surface}80` }}>
-                  <p className="text-base font-bold truncate" style={{ color: primary }}>{stats?.favoriteBarber || "—"}</p>
-                  <p className="text-xs uppercase tracking-wider font-semibold mt-1" style={{ color: `${accent}50` }}>Barber Favorit</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Total Kunjungan */}
+                  <div className="p-4 rounded-xl border text-center" style={{ background: bg, borderColor: `${surface}80` }}>
+                    <p className="text-3xl font-bold" style={{ color: accent }}>{stats?.totalVisits ?? 0}</p>
+                    <p className="text-xs uppercase tracking-wider font-semibold mt-1" style={{ color: `${accent}50` }}>Total Kunjungan</p>
+                  </div>
+                  {/* Total Pengeluaran */}
+                  <div className="p-4 rounded-xl border text-center" style={{ background: bg, borderColor: `${surface}80` }}>
+                    <p className="text-base font-bold" style={{ color: primary }}>
+                      Rp {(stats?.totalSpent ?? 0).toLocaleString('id-ID')}
+                    </p>
+                    <p className="text-xs uppercase tracking-wider font-semibold mt-1" style={{ color: `${accent}50` }}>Total Bayar</p>
+                  </div>
+                  {/* Barber Favorit */}
+                  <div className="p-4 rounded-xl border text-center" style={{ background: bg, borderColor: `${surface}80` }}>
+                    <p className="text-sm font-bold truncate" style={{ color: primary }}>{stats?.favoriteBarber || '—'}</p>
+                    <p className="text-xs uppercase tracking-wider font-semibold mt-1" style={{ color: `${accent}50` }}>Barber Favorit</p>
+                  </div>
+                  {/* Terakhir Hadir */}
+                  <div className="p-4 rounded-xl border text-center" style={{ background: bg, borderColor: `${surface}80` }}>
+                    <p className="text-sm font-bold leading-tight" style={{ color: accent }}>
+                      {stats?.lastVisitAt
+                        ? new Date(stats.lastVisitAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+                        : '—'}
+                    </p>
+                    <p className="text-xs uppercase tracking-wider font-semibold mt-1" style={{ color: `${accent}50` }}>Terakhir Hadir</p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         )}

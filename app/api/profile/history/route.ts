@@ -25,7 +25,22 @@ export async function GET(request: NextRequest) {
         // Ambil tenant dari header (di-inject oleh middleware)
         const { tenantId } = getTenantFromRequest(request);
 
-        // Fetch user's bookings, filtered by tenant if available
+        // ─── TASK 3: Ambil statistik dari VIEW rekonsiliasi ─────────────
+        // VIEW member_visit_stats menggabungkan KEDUA jalur transaksi:
+        //   - Online Booking  (bookings.user_id)
+        //   - POS Walk-in     (bookings.customer_id ↔ customers.phone = users.phone)
+        // HANYA booking dengan status = 'completed' yang dihitung.
+        const { data: memberStats } = await supabaseAdmin
+            .from('member_visit_stats')
+            .select('total_visits, total_spent, last_visit_at')
+            .eq('user_id', userId)
+            .single();
+
+        const totalVisits = memberStats?.total_visits  ?? 0;
+        const totalSpent  = memberStats?.total_spent   ?? 0;
+        const lastVisitAt = memberStats?.last_visit_at ?? null;
+
+        // ─── Fetch riwayat booking (hanya jalur online, untuk tampilan history) ─
         let query = supabaseAdmin
             .from('bookings')
             .select(`
@@ -33,6 +48,7 @@ export async function GET(request: NextRequest) {
                 start_time,
                 status,
                 service_type,
+                final_price,
                 barbers ( name ),
                 services ( name, price )
             `)
@@ -46,24 +62,16 @@ export async function GET(request: NextRequest) {
         const { data: bookings, error } = await query;
         if (error) throw error;
 
-        // Calculate statistics
-        const pastBookings = bookings?.filter((b: any) => new Date(b.start_time) < new Date() || b.status === 'completed') || [];
-        const totalHaircuts = pastBookings.length;
-        
-        let totalSpent = 0;
+        // ─── Hitung barber favorit dari riwayat ─────────────────────────
+        const completedBookings = bookings?.filter((b: any) => b.status === 'completed') || [];
         const barberCounts: Record<string, number> = {};
-
-        pastBookings.forEach((b: any) => {
-            if (b.services?.price) {
-                totalSpent += Number(b.services.price);
-            }
+        completedBookings.forEach((b: any) => {
             if (b.barbers?.name) {
                 barberCounts[b.barbers.name] = (barberCounts[b.barbers.name] || 0) + 1;
             }
         });
 
-        // Find favorite barber
-        let favoriteBarber = "Belum Ada";
+        let favoriteBarber = 'Belum Ada';
         let maxCount = 0;
         for (const [name, count] of Object.entries(barberCounts)) {
             if (count > maxCount) {
@@ -74,8 +82,12 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({
             stats: {
-                totalHaircuts,
+                // ✅ BARU: data dari VIEW (kedua jalur, status = 'completed' only)
+                totalVisits,
                 totalSpent,
+                lastVisitAt,
+                // Legacy field untuk kompatibilitas komponen lama
+                totalHaircuts: totalVisits,
                 favoriteBarber
             },
             history: bookings || []
@@ -86,3 +98,4 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ message: 'Internal Server Error' }, { status: 500 });
     }
 }
+

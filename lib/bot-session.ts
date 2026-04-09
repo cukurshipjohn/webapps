@@ -14,6 +14,11 @@ export type BotStep =
   | 'awaiting_payment'
   | 'awaiting_customer'
   | 'confirming'
+  | 'expense_category'
+  | 'expense_description'
+  | 'expense_amount'
+  | 'expense_receipt'
+  | 'expense_confirm'
 
 export interface BotContext {
   // Saat awaiting_price:
@@ -40,6 +45,15 @@ export interface BotContext {
   // Custom Flow states:
   awaiting_free_input?: boolean
   awaiting_cash_input?: boolean
+
+  // Expense states:
+  expense?: {
+    category: string
+    cat_label?: string
+    description?: string
+    amount?: number
+    receipt_url?: string | null
+  }
 }
 
 export interface BotSession {

@@ -82,6 +82,8 @@ export async function GET(request: NextRequest) {
             .from('barbers')
             .select('id, name, specialty, photo_url')
             .eq('tenant_id', tenantId)
+            .eq('role', 'barber')
+            .eq('is_active', true)
             .order('name', { ascending: true });
 
         // Fetch active services (public info: name, price, duration, type)

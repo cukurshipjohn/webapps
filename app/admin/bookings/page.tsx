@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BookingSummaryPanel } from "@/components/admin/BookingSummaryPanel";
 import { formatInTZ, getTimezoneLabel } from "@/lib/timezone";
+import { PendingExpensesBanner } from "@/components/PendingExpensesBanner";
 
 interface ExportButtonProps {
   dateFrom: string;
@@ -256,6 +257,8 @@ export default function AdminBookingsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Monitoring <span className="text-primary">Bookings</span></h1>
           <p className="text-neutral-400 text-sm mt-1">Pantau jadwal harian dan kelola pemesanan yang masuk.</p>
         </header>
+
+        <PendingExpensesBanner />
 
         {/* Filter Bar */}
         <div className="glass p-4 rounded-2xl border border-neutral-800/50 mb-8 flex flex-col sm:flex-row gap-4">

@@ -59,7 +59,7 @@ async function getTenantBySlug(slug: string) {
     return data?.[0] ?? null;
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
     // ─── BRANCH 1: ADMIN & SUPERADMIN AUTH ───────────────────────────────────
@@ -118,7 +118,8 @@ export async function middleware(request: NextRequest) {
     // [Fix 3] Admin & superadmin paths sepenuhnya dikecualikan dari tenant routing.
     // Ini mencegah header tenant (x-tenant-id, x-tenant-slug) bocor ke halaman admin
     // yang tidak membutuhkan konteks tenant & mencegah potensi konflik routing.
-    if (isAdminRoute || isSuperAdminRoute || isStaticFile || isErrorPage) {
+    const isPosRoute = pathname.startsWith('/pos');
+    if (isAdminRoute || isSuperAdminRoute || isPosRoute || isStaticFile || isErrorPage) {
         return NextResponse.next();
     }
 

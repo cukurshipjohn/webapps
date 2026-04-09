@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { PendingExpensesBanner } from "@/components/PendingExpensesBanner";
 
 interface Booking {
   id: string;
@@ -171,6 +172,9 @@ export default function AdminDashboardOverview() {
                 <p className="text-[10px] text-neutral-500 mt-auto pt-2">Akumulasi estimasi kotor</p>
               </div>
             </div>
+
+            {/* Pending Expenses Banner */}
+            <PendingExpensesBanner />
 
             {/* Main Content Grid: Booking Mendatang (Kiri/Besar) & Kapster Aktif (Kanan/Kecil) */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">

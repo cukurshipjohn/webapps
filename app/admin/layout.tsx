@@ -14,6 +14,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [shopLogo, setShopLogo] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [pendingVoids, setPendingVoids] = useState(0);
+  const [pendingExpenses, setPendingExpenses] = useState(0);
 
   // Strip protokol jika env var diset dengan https:// (misal di Vercel)
   const appDomain = (process.env.NEXT_PUBLIC_APP_DOMAIN || "cukurship.id").replace(/^https?:\/\//, "");
@@ -81,6 +82,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         if (d) setPendingVoids(d?.count ?? 0);
       })
       .catch(() => {});
+
+    // Fetch pending expenses count
+    fetch("/api/admin/expenses?status=pending&limit=1", {
+      headers: {
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      }
+    })
+      .then(r => {
+        if (!r.ok) return;
+        return r.json();
+      })
+      .then(d => {
+        if (d?.summary?.pending_count) setPendingExpenses(d.summary.pending_count);
+      })
+      .catch(() => {});
   }, []);
 
   // Set page title dynamically from tenant shop name
@@ -129,6 +145,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: "Manajemen Layanan", href: "/admin/services", icon: "💈", exact: false },
     { name: "Monitor Booking", href: "/admin/bookings", icon: "📅", exact: false },
     { name: "Post & Promo", href: "/admin/posts", icon: "📣", exact: false },
+    { name: "Pengeluaran Toko", href: "/admin/expenses", icon: "💸", exact: false },
     { name: "Langganan & Billing", href: "/admin/billing", icon: "💳", exact: false },
     { name: "Pengaturan Toko", href: "/admin/settings", icon: "⚙️", exact: false },
   ];
@@ -193,6 +210,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     {pendingVoids}
                   </span>
                 )}
+                {link.name === "Pengeluaran Toko" && pendingExpenses > 0 && (
+                  <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5 shadow-sm flex items-center justify-center min-w-[20px]">
+                    {pendingExpenses}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -254,6 +276,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     {link.name === "Monitor Booking" && pendingVoids > 0 && (
                       <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5 shadow-sm flex items-center justify-center min-w-[20px]">
                         {pendingVoids}
+                      </span>
+                    )}
+                    {link.name === "Pengeluaran Toko" && pendingExpenses > 0 && (
+                      <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full px-2 py-0.5 shadow-sm flex items-center justify-center min-w-[20px]">
+                        {pendingExpenses}
                       </span>
                     )}
                   </Link>

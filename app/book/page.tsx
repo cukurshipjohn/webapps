@@ -306,7 +306,11 @@ export default function BookAppointmentPage() {
                 barbers.map(b => (
                   <button type="button" key={b.id} onClick={() => setSelectedBarber(b.id)}
                     className={`w-full flex items-center gap-4 p-4 rounded-xl border text-sm font-medium transition-all ${selectedBarber === b.id ? "bg-primary/10 border-primary text-primary-hover" : "bg-neutral-900/50 border-neutral-800 text-neutral-300 hover:border-primary/40"}`}>
-                    <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center text-xl flex-shrink-0">💇</div>
+                    {b.photo_url ? (
+                      <img src={b.photo_url} alt={b.name} className="w-10 h-10 rounded-full object-cover border border-neutral-700 flex-shrink-0 bg-neutral-800" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center text-xl flex-shrink-0 border border-neutral-700">💇</div>
+                    )}
                     <div className="text-left">
                       <p className="font-semibold">{b.name}</p>
                       {b.specialty && <p className="text-xs text-neutral-500">✨ {b.specialty}</p>}

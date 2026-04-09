@@ -85,7 +85,9 @@ export async function GET(request: NextRequest) {
 
             // [4] Active Barbers
             supabaseAdmin.from('barbers').select('id', { count: 'exact', head: true })
-                .eq('tenant_id', tenantId),
+                .eq('tenant_id', tenantId)
+                .eq('role', 'barber')
+                .eq('is_active', true),
 
             // [5] Upcoming Bookings (Confirmed, > Now)
             supabaseAdmin.from('bookings').select(`
@@ -103,6 +105,8 @@ export async function GET(request: NextRequest) {
             // [6] Get Barbers Info for 'Active Barbers' section list
             supabaseAdmin.from('barbers').select('id, name, specialty, photo_url')
                 .eq('tenant_id', tenantId)
+                .eq('role', 'barber')
+                .eq('is_active', true)
                 .order('name', { ascending: true })
         ];
 

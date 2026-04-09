@@ -10,6 +10,8 @@ export async function GET(request: NextRequest) {
         let query = supabaseAdmin
             .from('barbers')
             .select('*')
+            .eq('role', 'barber')
+            .eq('is_active', true)
             .order('name', { ascending: true });
 
         // Filter per tenant jika ada

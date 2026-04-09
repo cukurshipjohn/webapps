@@ -252,6 +252,34 @@ async function sendWhatsAppToOwner(tenantId: string, message: string) {
     console.log(`[WA_TO_OWNER_MOCK] Tenant: ${tenantId} | Message: ${message}`);
 }
 
+async function showExpenseSummary(chatId: string, session: any) {
+    if (!session || !session.context || !session.context.expense) return;
+    const e = session.context.expense;
+    const catLabel: Record<string, string> = {
+        supplies: '🧴 Produk/Alat',
+        utility:  '💡 Utilitas',
+        other:    '🔧 Lainnya',
+    };
+    const cLabel = catLabel[e.category] || e.category;
+    const rupiah = 'Rp ' + e.amount.toLocaleString('id-ID');
+    const receiptInfo = e.receipt_url ? '📷 Foto struk: ✅ Terlampir' : '📷 Foto struk: Tidak ada';
+
+    await sendTelegramMessage(chatId, 
+        '📋 *Ringkasan Pengeluaran*\n\n' +
+        `• Kategori   : ${cLabel}\n` +
+        `• Keterangan : ${e.description}\n` +
+        `• Nominal    : *${rupiah}*\n` +
+        `• ${receiptInfo}\n\n` +
+        'Kirim pengajuan ini ke owner?', {
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: '✅ Ya, Kirim', callback_data: 'exp_confirm_yes' }, { text: '❌ Batal', callback_data: 'exp_confirm_no' }]
+            ]
+        }
+    });
+}
+
 // ═══════════════════════════════════════════════════════════════
 // POST — Main Webhook Handler
 // ═══════════════════════════════════════════════════════════════
@@ -266,10 +294,10 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
 
-        // ─── CABANG 1: TEKS MASUK ───
-        if (body.message && body.message.text) {
+        // ─── CABANG 1: TEKS / PHOTO MASUK ───
+        if (body.message && (body.message.text || body.message.photo)) {
             const chatId = body.message.chat.id.toString();
-            const text = body.message.text.trim();
+            const text = (body.message.text || body.message.caption || '').trim();
             const textLower = text.toLowerCase();
 
             await sendChatAction(chatId);
@@ -307,6 +335,86 @@ export async function POST(request: NextRequest) {
             // --- STATE MACHINE TEXT ---
             const session = await getSession(chatId, tenant.id);
 
+            // LANGKAH E — Photo Upload Handler
+            if (session?.step === 'expense_receipt' && body.message.photo) {
+                const photos = body.message.photo;
+                const largest = photos[photos.length - 1];
+                const fileId = largest.file_id;
+                const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+
+                await sendTelegramMessage(chatId, '⏳ Mengupload struk...');
+                
+                try {
+                    const fileRes = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fileId}`);
+                    const { result } = await fileRes.json();
+                    const filePath = result.file_path;
+
+                    const imgRes = await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`);
+                    const buffer = await imgRes.arrayBuffer();
+
+                    const ext = filePath.split('.').pop() ?? 'jpg';
+                    const storagePath = `${tenant.id}/${barber.id}/${Date.now()}.${ext}`;
+
+                    const { data: up } = await supabaseAdmin.storage
+                        .from('expense-receipts')
+                        .upload(storagePath, buffer, {
+                            contentType: 'image/jpeg',
+                            upsert: false,
+                        });
+
+                    const ctx = session.context as any;
+                    ctx.expense.receipt_url = up?.path ?? null;
+
+                    await upsertSession(chatId, tenant.id, barber.id, 'expense_confirm', ctx);
+                    await showExpenseSummary(chatId, await getSession(chatId, tenant.id));
+                    return NextResponse.json({ ok: true });
+                } catch (e) {
+                    await sendTelegramMessage(chatId, '❌ Gagal upload struk. Silakan klik "Lewati" atau coba lagi.');
+                    return NextResponse.json({ ok: true });
+                }
+            }
+
+            // LANGKAH D — Text Input Handler Pengeluaran
+            if (session?.step === 'expense_description') {
+                const desc = text.trim();
+                if (desc.length < 3) {
+                    await sendTelegramMessage(chatId, '⚠️ Keterangan terlalu pendek. Minimal 3 karakter.');
+                    return NextResponse.json({ ok: true });
+                }
+                const ctx = session.context as any;
+                ctx.expense.description = desc;
+                await upsertSession(chatId, tenant.id, barber.id, 'expense_amount', ctx);
+                await sendTelegramMessage(chatId, `📝 "${desc}"\n\n💰 Masukkan *nominal* pengeluaran (angka saja):\n(Contoh: 150000)`, { parse_mode: 'Markdown' });
+                return NextResponse.json({ ok: true });
+            }
+
+            if (session?.step === 'expense_amount') {
+                const raw = text.replace(/\D/g, '');
+                const amount = parseInt(raw);
+                if (isNaN(amount) || amount <= 0) {
+                    await sendTelegramMessage(chatId, '⚠️ Nominal tidak valid. Masukkan angka saja.');
+                    return NextResponse.json({ ok: true });
+                }
+                const ctx = session.context as any;
+                ctx.expense.amount = amount;
+                await upsertSession(chatId, tenant.id, barber.id, 'expense_receipt', ctx);
+
+                const rupiah = 'Rp ' + amount.toLocaleString('id-ID');
+                await sendTelegramMessage(chatId, `💰 Nominal: *${rupiah}* ✅\n\n📷 Upload foto struk? (Opsional)`, {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: '📷 Upload Foto', callback_data: 'exp_await_photo' },
+                                { text: 'Lewati →', callback_data: 'exp_skip_receipt' }
+                            ]
+                        ]
+                    }
+                });
+                return NextResponse.json({ ok: true });
+            }
+
+            // Cegah command masuk ke session fallback jika kita masih memproses teks reguler
             if (session) {
                 const ctx = session.context as any;
 
@@ -381,14 +489,48 @@ export async function POST(request: NextRequest) {
                 }
             }
 
-            // COMMAND /kasir
+            // COMMAND /kasir & /start
             if (textLower === '/start' || textLower === '/kasir') {
+                // Cek booking online pending hari ini untuk peringatan dini
+                const { countPendingBookings } = await import('@/lib/booking-alerts')
+                const pendingAlert = await countPendingBookings(
+                    tenant.id,
+                    (barber as any).role === 'barber' ? barber.id : null,
+                    (barber as any).role as 'barber' | 'cashier'
+                )
+                const warningText = pendingAlert.count > 0
+                    ? `\n\n🔴 <b>PERINGATAN:</b> Ada <b>${pendingAlert.count} pesanan online</b> hari ini yang belum diselesaikan!`
+                    : ''
+
                 await clearSession(chatId, tenant.id);
                 await upsertSession(chatId, tenant.id, barber.id, 'awaiting_customer', { cart: [] });
                 
-                await sendTelegramMessage(chatId, `💈 <b>Transaksi Baru</b>\n\nKetik nama pelanggan,\natau pilih tombol di bawah:`, {
+                await sendTelegramMessage(chatId, `💈 <b>Transaksi Baru</b>\n\nKetik nama pelanggan,\natau pilih tombol di bawah:${warningText}`, {
                     reply_markup: {
                         inline_keyboard: [[ { text: '👤 Tanpa Nama', callback_data: 'customer_skip' } ]]
+                    }
+                });
+            } else if (textLower === '/pengeluaran') {
+                const EXPENSE_STEPS = ['expense_category', 'expense_description', 'expense_amount', 'expense_receipt', 'expense_confirm'];
+                if (session && !EXPENSE_STEPS.includes(session.step) && session.step !== 'idle') {
+                    await sendTelegramMessage(chatId, '⚠️ Selesaikan transaksi kasir yang sedang berjalan dulu sebelum mencatat pengeluaran.\n\nKetik /kasir untuk melanjutkan.');
+                    return NextResponse.json({ ok: true });
+                }
+
+                await upsertSession(chatId, tenant.id, barber.id, 'expense_category', { expense: {} } as any);
+                await sendTelegramMessage(chatId, '💸 *Catat Pengeluaran Toko*\n\nPilih kategori pengeluaran:', {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: '🧴 Produk/Alat', callback_data: 'exp_cat_supplies' },
+                                { text: '💡 Utilitas', callback_data: 'exp_cat_utility' },
+                                { text: '🔧 Lainnya', callback_data: 'exp_cat_other' }
+                            ],
+                            [
+                                { text: '❌ Batal', callback_data: 'exp_cancel' }
+                            ]
+                        ]
                     }
                 });
             } else if (textLower === '/laporan') {
@@ -1037,21 +1179,21 @@ export async function POST(request: NextRequest) {
                     // Cari customer yang sudah ada
                     const { data: existingCustomer } = await supabaseAdmin
                         .from('customers')
-                        .select('id, total_visits')
+                        .select('id')
                         .eq('tenant_id', tenant.id)
                         .ilike('name', ctx.customer_name.trim())
                         .maybeSingle();
                     if (existingCustomer) {
                         resolvedCustomerId = existingCustomer.id;
-                        // Update last_visit_at dan total_visits
+                        // Update last_visit_at saja — total_visits deprecated, pakai VIEW member_visit_stats
                         await supabaseAdmin.from('customers')
-                            .update({ last_visit_at: now, total_visits: (existingCustomer.total_visits ?? 0) + 1 })
+                            .update({ last_visit_at: now })
                             .eq('id', existingCustomer.id);
                     } else {
                         // Buat customer baru
                         const { data: newCustomer } = await supabaseAdmin
                             .from('customers')
-                            .insert({ tenant_id: tenant.id, name: ctx.customer_name.trim(), total_visits: 1, last_visit_at: now })
+                            .insert({ tenant_id: tenant.id, name: ctx.customer_name.trim(), last_visit_at: now })
                             .select('id')
                             .single();
                         resolvedCustomerId = newCustomer?.id ?? null;
@@ -1103,6 +1245,91 @@ export async function POST(request: NextRequest) {
             if (data === 'confirm_cancel') {
                 await clearSession(chatId, tenant.id);
                 await editTelegramMessage(chatId, messageId, `❌ <b>Transaksi dibatalkan.</b>\n\nKetuk /kasir untuk mulai transaksi baru.`);
+                await answerCallbackQuery(callbackId);
+                return NextResponse.json({ ok: true });
+            }
+
+            // ─── LANGKAH C — Callback Handlers Pengeluaran ───
+            if (data.startsWith('exp_cat_')) {
+                const catMap: Record<string, { key: string, label: string }> = {
+                    exp_cat_supplies: { key: 'supplies', label: '🧴 Produk/Alat' },
+                    exp_cat_utility:  { key: 'utility',  label: '💡 Utilitas' },
+                    exp_cat_other:    { key: 'other',    label: '🔧 Lainnya' },
+                };
+                ctx.expense = ctx.expense || {};
+                ctx.expense.category = catMap[data].key;
+                ctx.expense.cat_label = catMap[data].label;
+
+                await upsertSession(chatId, tenant.id, barber.id, 'expense_description', ctx);
+                await editTelegramMessage(chatId, messageId, `${catMap[data].label} dipilih ✅\n\n📝 Ketik *keterangan* pengeluaran:\n(Contoh: Beli pomade Murray's 3 pcs)`, { parse_mode: 'Markdown' });
+                await answerCallbackQuery(callbackId);
+                return NextResponse.json({ ok: true });
+            }
+
+            if (data === 'exp_cancel') {
+                await clearSession(chatId, tenant.id);
+                await editTelegramMessage(chatId, messageId, '❌ Pencatatan pengeluaran dibatalkan.');
+                await answerCallbackQuery(callbackId);
+                return NextResponse.json({ ok: true });
+            }
+
+            if (data === 'exp_await_photo') {
+                await answerCallbackQuery(callbackId, 'Silakan kirim foto struk dari galeri/kamera.');
+                return NextResponse.json({ ok: true });
+            }
+
+            if (data === 'exp_skip_receipt') {
+                ctx.expense.receipt_url = null;
+                await upsertSession(chatId, tenant.id, barber.id, 'expense_confirm', ctx);
+                await editTelegramMessage(chatId, messageId, 'Struk dilewati.');
+                await showExpenseSummary(chatId, await getSession(chatId, tenant.id));
+                await answerCallbackQuery(callbackId);
+                return NextResponse.json({ ok: true });
+            }
+
+            if (data === 'exp_confirm_yes') {
+                const e = ctx.expense;
+                const { data: insData, error } = await supabaseAdmin
+                    .from('barber_expenses')
+                    .insert({
+                        tenant_id: tenant.id,
+                        barber_id: barber.id,
+                        category: e.category,
+                        description: e.description,
+                        amount: e.amount,
+                        receipt_url: e.receipt_url ?? null,
+                        status: 'pending',
+                    })
+                    .select()
+                    .single();
+
+                if (error) {
+                    await editTelegramMessage(chatId, messageId, '❌ Gagal menyimpan pengajuan. Coba lagi.');
+                    await clearSession(chatId, tenant.id);
+                    await answerCallbackQuery(callbackId);
+                    return NextResponse.json({ ok: true });
+                }
+
+                const { notifyOwnerNewExpense } = await import('@/lib/expense-notify');
+                notifyOwnerNewExpense({
+                    tenantId: tenant.id,
+                    barberName: barber.name,
+                    category: e.category,
+                    description: e.description,
+                    amount: e.amount,
+                    expenseId: insData.id,
+                }).catch(console.error);
+
+                await clearSession(chatId, tenant.id);
+                const rupiah = 'Rp ' + e.amount.toLocaleString('id-ID');
+                await editTelegramMessage(chatId, messageId, `✅ *Pengajuan Terkirim!*\n\n"${e.description}" senilai *${rupiah}* telah diajukan ke owner untuk disetujui.`, { parse_mode: 'Markdown' });
+                await answerCallbackQuery(callbackId);
+                return NextResponse.json({ ok: true });
+            }
+
+            if (data === 'exp_confirm_no') {
+                await clearSession(chatId, tenant.id);
+                await editTelegramMessage(chatId, messageId, '❌ Pengajuan dibatalkan.');
                 await answerCallbackQuery(callbackId);
                 return NextResponse.json({ ok: true });
             }
