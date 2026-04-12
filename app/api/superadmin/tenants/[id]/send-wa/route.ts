@@ -21,15 +21,15 @@ export async function POST(
         .from('tenants')
         .select(`
           id, shop_name,
-          users!owner_user_id ( phone, name )
+          users!owner_user_id ( phone_number, name )
         `)
         .eq('id', id)
         .single()
 
       const users = tenant?.users;
       const ownerPhone = Array.isArray(users) 
-        ? users[0]?.phone 
-        : (users as unknown as { phone?: string })?.phone;
+        ? users[0]?.phone_number 
+        : (users as unknown as { phone_number?: string })?.phone_number;
       if (!ownerPhone) {
         return NextResponse.json(
           { error: 'Nomor HP owner tidak ditemukan' },

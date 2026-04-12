@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
         created_at,
         users!owner_user_id ( 
           name, 
-          phone 
+          phone_number 
         ),
         superadmin_followups (
           id,
