@@ -85,8 +85,12 @@ export async function POST(req: Request) {
       shopName: tenant.shop_name,
     })
 
-    // 9. Response 200
-    return NextResponse.json({
+    // BUG #6 FIX: Set HttpOnly cookie untuk pos_token agar terlindungi dari serangan XSS.
+    // Token juga tetap dikembalikan di body JSON untuk backward compatibility
+    // dengan POS frontend yang masih membaca dari localStorage.
+    const sessionHours = parseInt(process.env.POS_SESSION_HOURS || '12', 10);
+
+    const response = NextResponse.json({
       success: true,
       token,
       barberName: selectedProfile.name,
@@ -94,6 +98,18 @@ export async function POST(req: Request) {
       shopName: tenant.shop_name,
       tenantId: selectedProfile.tenant_id,
     })
+
+    response.cookies.set({
+      name: 'pos_token',
+      value: token,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/pos',
+      maxAge: sessionHours * 3600,
+    })
+
+    return response
 
   } catch (error: any) {
     console.error('Error in POST /api/pos/auth/verify-otp:', error)

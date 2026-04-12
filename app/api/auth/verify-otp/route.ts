@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { trackTenantActivity } from '@/lib/activity-tracker';
+import { normalizePhone } from '@/lib/phone-utils';
 import jwt from 'jsonwebtoken';
 
 export async function POST(request: NextRequest) {
@@ -22,11 +23,15 @@ export async function POST(request: NextRequest) {
         const isMagicOtp = isBypassEnabled && phoneNumber === '08111111111' && otpCode === '123456';
 
         if (!isMagicOtp) {
+            // BUG #4 FIX: Normalisasi phone ke canonical 628... sebelum query otp_sessions.
+            // request-otp sudah menyimpan OTP dalam format canonical, jadi query harus match.
+            const canonicalPhone = normalizePhone(phoneNumber);
+
             // 1. Cek OTP di Supabase — harus cocok, belum expired, belum dipakai
             const { data: sessions, error: fetchError } = await supabaseAdmin
                 .from('otp_sessions')
                 .select('*')
-                .eq('phone_number', phoneNumber)
+                .eq('phone_number', canonicalPhone)
                 .eq('otp_code', otpCode)
                 .eq('used', false)
                 .gt('expires_at', new Date().toISOString())
@@ -123,14 +128,18 @@ export async function POST(request: NextRequest) {
         }
 
         // 4. Terbitkan JWT token
-        // Superadmin override: role di JWT menjadi 'superadmin' HANYA jika:
-        //   (a) request berasal dari halaman superadmin login (isSuperadminLogin=true), DAN
-        //   (b) nomor cocok dengan SUPERADMIN_PHONE di env
-        // Semua flow lain (owner, customer, dll) tetap menggunakan role dari DB.
+        // BUG #7 FIX: Superadmin role hanya diberikan jika:
+        //   (a) isSuperadminLogin=true (caller mengklaim sebagai superadmin)
+        //   (b) phoneNumber cocok dengan SUPERADMIN_PHONE di env
+        //   (c) user.role di DB memang 'superadmin' — mencegah exploitation
+        //       flag ini oleh user biasa yang tahu nomor superadmin
         const superadminPhone = process.env.SUPERADMIN_PHONE;
-        const effectiveRole = (isSuperadminLogin && superadminPhone && phoneNumber === superadminPhone)
-            ? 'superadmin'
-            : user.role;
+        const effectiveRole = (
+            isSuperadminLogin &&
+            superadminPhone &&
+            phoneNumber === superadminPhone &&
+            user.role === 'superadmin'  // WAJIB: validasi dari DB, bukan hanya dari flag
+        ) ? 'superadmin' : user.role;
 
         const token = jwt.sign(
             { 

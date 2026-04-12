@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { normalizePhone } from '@/lib/phone-utils';
 
 function generateOTP(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
@@ -69,19 +70,24 @@ export async function POST(request: Request) {
         const otpCode = generateOTP();
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 menit
 
+        // BUG #4 FIX: Normalisasi ke format canonical 628... sebelum disimpan ke otp_sessions.
+        // Ini menyamakan format dengan POS flow yang sudah canonical.
+        // phoneNumber asli tetap dipakai untuk lookup users/affiliates dan pengiriman WA.
+        const canonicalPhone = normalizePhone(phoneNumber);
+
         // 2. Hapus SEMUA OTP sebelumnya untuk nomor ini (used=true maupun false)
         // FIX: Filter .eq('used', false) dihapus karena UNIQUE constraint pada phone_number
         // menyebabkan INSERT gagal jika row used=true masih ada di tabel.
         await supabaseAdmin
             .from('otp_sessions')
             .delete()
-            .eq('phone_number', phoneNumber);
+            .eq('phone_number', canonicalPhone);
 
-        // 3. Simpan OTP baru ke Supabase
+        // 3. Simpan OTP baru ke Supabase dengan format canonical
         const { error: insertError } = await supabaseAdmin
             .from('otp_sessions')
             .insert({
-                phone_number: phoneNumber,
+                phone_number: canonicalPhone,
                 otp_code: otpCode,
                 expires_at: expiresAt.toISOString(),
                 used: false
