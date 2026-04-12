@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
         // Fetch full details for Notification, including tenant's WA session
         const [ { data: user }, { data: tenantSettings } ] = await Promise.all([
             supabaseAdmin.from('users').select('phone_number, name').eq('id', userId).single(),
-            supabaseAdmin.from('tenant_settings').select('wa_session_id').eq('tenant_id', tenantId).single()
+            supabaseAdmin.from('tenant_settings').select('wa_session_id, timezone').eq('tenant_id', tenantId).single()
         ]);
 
         // Fire-and-forget: catat event booking_created untuk health tracking
@@ -184,7 +184,14 @@ export async function POST(request: NextRequest) {
             metadata: { booking_id: newBooking.id },
         }).catch(() => {}); // silent fail
 
-        const formattedTime = bookingTime.toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'short' });
+        // FIX: Sertakan timeZone tenant agar jam yang tampil di WA sesuai zona waktu toko,
+        // bukan UTC. Server Vercel berjalan UTC — tanpa timeZone, jam mundur 7 jam dari WIB.
+        const tenantTimezone = (tenantSettings as any)?.timezone || 'Asia/Jakarta';
+        const formattedTime = bookingTime.toLocaleString('id-ID', {
+            dateStyle: 'full',
+            timeStyle: 'short',
+            timeZone: tenantTimezone,
+        });
         const customerName = user?.name || "Pelanggan Baru";
         const customerPhone = user?.phone_number || "Tidak diketahui";
         const waSessionId = tenantSettings?.wa_session_id || null;
