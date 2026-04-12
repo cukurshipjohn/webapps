@@ -20,7 +20,14 @@ export async function GET(request: NextRequest) {
 
         const totalAffiliates   = (affiliates || []).length;
         const activeAffiliates  = (affiliates || []).filter((a: any) => a.status === 'active').length;
-        const pendingApproval   = (affiliates || []).filter((a: any) => a.status === 'pending').length;
+
+        // BUG #2 FIX: Status affiliator baru setelah daftar adalah 'unverified' (bukan 'pending').
+        // Filter lama .filter(a => a.status === 'pending') selalu menghasilkan 0 karena
+        // register/route.ts menyimpan status = 'unverified'.
+        // Sekarang filter mencakup KEDUA status agar superadmin mendapat hitungan akurat:
+        //   'unverified' — baru daftar, belum klik link WA
+        //   'pending'    — sudah verifikasi WA tapi menunggu manual review (jika ditambahkan di masa depan)
+        const pendingApproval   = (affiliates || []).filter((a: any) => ['unverified', 'pending'].includes(a.status)).length;
         const totalClicksAll    = (affiliates || []).reduce((s: number, a: any) => s + (a.total_clicks || 0), 0);
         const totalReferralsAll = (affiliates || []).reduce((s: number, a: any) => s + (a.total_referrals || 0), 0);
         const totalPaidReferrals = (affiliates || []).reduce((s: number, a: any) => s + (a.total_paid_referrals || 0), 0);

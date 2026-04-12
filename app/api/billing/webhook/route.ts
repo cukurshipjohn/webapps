@@ -146,12 +146,15 @@ export async function POST(request: NextRequest) {
                 if (referral && affiliate?.status === 'active') {
                     const isFirstPayment = referral.status === 'registered';
                     
+                    // BUG #1 FIX: 'one-time' (hyphen) → 'one_time' (underscore).
+                    // register/route.ts menyimpan nilai 'one_time' ke DB, jadi
+                    // perbandingan di sini harus menggunakan string yang sama persis.
                     const shouldCreateCommission =
                         affiliate.commission_type === 'recurring' ||
-                        (affiliate.commission_type === 'one-time' && isFirstPayment);
+                        (affiliate.commission_type === 'one_time' && isFirstPayment);
 
                     if (shouldCreateCommission) {
-                        // Midtrans sering mengirim gross_amount sebagai sting dengan trailing nol (".00")
+                        // Midtrans sering mengirim gross_amount sebagai string dengan trailing nol (".00")
                         const transactionAmount = Math.round(Number(gross_amount));
 
                         const commissionAmount = calculateCommission(
@@ -185,9 +188,11 @@ export async function POST(request: NextRequest) {
                                     .update({ status: 'converted', first_paid_at: now.toISOString() })
                                     .eq('id', referral.id);
 
+                                // BUG #3 FIX: Tambah fallback (|| 0) agar tidak crash/NaN
+                                // jika kolom total_paid_referrals bernilai null di DB.
                                 await supabaseAdmin
                                     .from('affiliates')
-                                    .update({ total_paid_referrals: affiliate.total_paid_referrals + 1 })
+                                    .update({ total_paid_referrals: (affiliate.total_paid_referrals || 0) + 1 })
                                     .eq('id', affiliate.id);
                             }
 
