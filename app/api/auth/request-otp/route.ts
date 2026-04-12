@@ -27,6 +27,15 @@ export async function POST(request: Request) {
         }
         // --- END MIDTRANS REVIEW BYPASS ---
         
+        // ── SUPERADMIN PHONE GATE ─────────────────────────────────────────────
+        // Jika nomor adalah SUPERADMIN_PHONE, ia WAJIB masuk lewat portal admin
+        // (isAdminLogin=true). Jika datang dari portal lain (customer, affiliate, dll),
+        // langsung tolak agar SUPERADMIN_PHONE tidak bisa di-track sebagai target OTP.
+        const superadminPhoneGlobal = process.env.SUPERADMIN_PHONE;
+        if (superadminPhoneGlobal && phoneNumber === superadminPhoneGlobal && !isAdminLogin) {
+            return NextResponse.json({ message: 'Nomor tidak dapat digunakan di portal ini.' }, { status: 403 });
+        }
+
         // Strict Admin Portal Check: Prevent sending OTP if not an admin
         if (isAdminLogin) {
             // Bypass khusus superadmin: jika nomor ada di env SUPERADMIN_PHONE,

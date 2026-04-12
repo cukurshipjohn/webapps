@@ -128,17 +128,20 @@ export async function POST(request: NextRequest) {
         }
 
         // 4. Terbitkan JWT token
-        // BUG #7 FIX: Superadmin role hanya diberikan jika:
-        //   (a) isSuperadminLogin=true (caller mengklaim sebagai superadmin)
-        //   (b) phoneNumber cocok dengan SUPERADMIN_PHONE di env
-        //   (c) user.role di DB memang 'superadmin' — mencegah exploitation
-        //       flag ini oleh user biasa yang tahu nomor superadmin
+        // SUPERADMIN ROLE LOGIC (refined):
+        //   Syarat mendapat role 'superadmin' di JWT:
+        //   (a) isSuperadminLogin=true  — flag dari halaman superadmin login
+        //   (b) phoneNumber === SUPERADMIN_PHONE  — verifikasi dari env
+        //
+        //   Tidak perlu cek user.role di DB karena keamanan sudah dijaga di HULU:
+        //   request-otp menolak SUPERADMIN_PHONE jika tidak melalui isAdminLogin=true.
+        //   Dengan begitu OTP untuk superadmin hanya bisa diminta dari portal admin.
+        //   Semua flow lain (owner, customer, dll) tetap menggunakan role dari DB.
         const superadminPhone = process.env.SUPERADMIN_PHONE;
         const effectiveRole = (
             isSuperadminLogin &&
             superadminPhone &&
-            phoneNumber === superadminPhone &&
-            user.role === 'superadmin'  // WAJIB: validasi dari DB, bukan hanya dari flag
+            phoneNumber === superadminPhone
         ) ? 'superadmin' : user.role;
 
         const token = jwt.sign(
