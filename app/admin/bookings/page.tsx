@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BookingSummaryPanel } from "@/components/admin/BookingSummaryPanel";
-import { formatInTZ, getTimezoneLabel } from "@/lib/timezone";
+import { formatInTZ, getTimezoneLabel, getTodayInTZ } from "@/lib/timezone";
 import { PendingExpensesBanner } from "@/components/PendingExpensesBanner";
 
 interface ExportButtonProps {
