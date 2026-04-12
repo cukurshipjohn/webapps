@@ -66,20 +66,27 @@ export async function proxy(request: NextRequest) {
     const isAffiliateOrigin = hostname === `affiliate.${ROOT_DOMAIN}` || (isLocal && hostname.startsWith('affiliate.localhost'));
     const isAdminOrigin = hostname === `admin.${ROOT_DOMAIN}` || (isLocal && hostname.startsWith('admin.localhost'));
 
-    if (isPosOrigin && !pathname.startsWith('/pos')) {
+    // FIX: Tandai path-path yang TIDAK boleh di-rewrite dengan prefix subdomain.
+    // API routes ada secara global di /app/api/ — bukan di /app/affiliate/api/ dll.
+    // Static assets Next.js (/_next/) juga tidak boleh diberi prefix.
+    const isApiPath     = pathname.startsWith('/api');
+    const isNextStatic  = pathname.startsWith('/_next') || pathname.startsWith('/favicon');
+
+    if (isPosOrigin && !pathname.startsWith('/pos') && !isApiPath && !isNextStatic) {
       url.pathname = `/pos${pathname === '/' ? '' : pathname}`;
       return NextResponse.rewrite(url);
     }
     
-    if (isAffiliateOrigin && !pathname.startsWith('/affiliate')) {
+    if (isAffiliateOrigin && !pathname.startsWith('/affiliate') && !isApiPath && !isNextStatic) {
       url.pathname = `/affiliate${pathname === '/' ? '' : pathname}`;
       return NextResponse.rewrite(url);
     }
     
-    if (isAdminOrigin && !pathname.startsWith('/admin')) {
+    if (isAdminOrigin && !pathname.startsWith('/admin') && !isApiPath && !isNextStatic) {
       url.pathname = `/admin${pathname === '/' ? '' : pathname}`;
       return NextResponse.rewrite(url);
     }
+
 
     // ─── 2. ADMIN & SUPERADMIN AUTH ─────────────────────────────────────────
     const isAdminRoute = pathname.startsWith('/admin');
