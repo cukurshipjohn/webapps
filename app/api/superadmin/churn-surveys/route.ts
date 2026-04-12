@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
   try {
-      const user = await getUserFromToken(req)
+      const user = getUserFromToken(req)
       if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       requireRole(['superadmin'], user.role)
 
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
         .select(`
           id, reason, detail_note, 
           recorded_by, recorded_at,
-          tenants ( id, name )
+          tenants ( id, shop_name )
         `)
         .order('recorded_at', { ascending: false })
 
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-      const user = await getUserFromToken(req)
+      const user = getUserFromToken(req)
       if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       requireRole(['superadmin'], user.role)
 

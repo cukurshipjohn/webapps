@@ -17,7 +17,7 @@ function sendWA(phone: string, message: string) {
 
 // ─── GET: List semua request pencairan ──────────────────────────────────────
 export async function GET(request: NextRequest) {
-    const user = await getUserFromToken(request);
+    const user = getUserFromToken(request);
     if (!user || user.role !== 'superadmin') {
         return NextResponse.json({ message: 'Akses ditolak.' }, { status: 403 });
     }
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 // ─── PATCH: Approve atau Reject ──────────────────────────────────────────────
 export async function PATCH(request: NextRequest) {
     try {
-        const user = await getUserFromToken(request);
+        const user = getUserFromToken(request);
         if (!user || user.role !== 'superadmin') {
             return NextResponse.json({ message: 'Akses ditolak.' }, { status: 403 });
         }

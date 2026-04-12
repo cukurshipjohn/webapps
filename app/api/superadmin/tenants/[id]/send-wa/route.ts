@@ -10,7 +10,7 @@ export async function POST(
 ) {
   try {
       const { id } = await params
-      const user = await getUserFromToken(req)
+      const user = getUserFromToken(req)
       if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       requireRole(['superadmin'], user.role)
 
@@ -20,7 +20,7 @@ export async function POST(
       const { data: tenant } = await supabaseAdmin
         .from('tenants')
         .select(`
-          id, name,
+          id, shop_name,
           users!owner_user_id ( phone, name )
         `)
         .eq('id', id)
@@ -45,7 +45,7 @@ export async function POST(
         )
       }
 
-      const finalMessage = message ?? getWATemplate(template, tenant?.name ?? '')
+      const finalMessage = message ?? getWATemplate(template, tenant?.shop_name ?? '')
 
       const waResponse = await fetch(`${waServiceUrl}/send`, {
         method: 'POST',

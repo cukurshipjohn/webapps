@@ -10,7 +10,7 @@ export async function PATCH(
 ) {
   try {
       const { id } = await params
-      const user = await getUserFromToken(req)
+      const user = getUserFromToken(req)
       if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       requireRole(['superadmin'], user.role)
 

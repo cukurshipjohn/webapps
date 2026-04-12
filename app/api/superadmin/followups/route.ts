@@ -6,7 +6,8 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
   try {
-      const user = await getUserFromToken(req)
+      // FIX: getUserFromToken adalah sync function — tidak perlu await
+      const user = getUserFromToken(req)
       if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       requireRole(['superadmin'], user.role)
 
@@ -24,9 +25,11 @@ export async function GET(req: NextRequest) {
           id, case_type, channel, note, 
           outcome, scheduled_at, done_at,
           created_at, updated_at,
-          tenants ( id, name, slug ),
+          tenants ( id, shop_name, slug ),
           users!admin_id ( name )
         `)
+        // FIX: 'name' → 'shop_name' di join tenants
+        // Kolom 'name' tidak ada di tabel tenants (nama kolom aktual: shop_name)
         .order('created_at', { ascending: false })
         .limit(limit)
 
@@ -54,7 +57,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-      const user = await getUserFromToken(req)
+      // FIX: getUserFromToken adalah sync function — tidak perlu await
+      const user = getUserFromToken(req)
       if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       requireRole(['superadmin'], user.role)
 
