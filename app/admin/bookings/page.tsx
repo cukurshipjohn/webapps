@@ -115,37 +115,51 @@ export default function AdminBookingsPage() {
   }, []);
 
   // Fungsi pembantu untuk mendapatkan rentang tanggal
+  // FIX: Gunakan getTodayInTZ agar sadar timezone tenant.
+  // new Date() + toISOString() sebelumnya menghasilkan tanggal KEMARIN
+  // saat jam 00:00–06:59 WIB karena konversi ke UTC memundurkan 7 jam.
   const getDateRange = (type: string) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Normalisasi ke jam 00:00 hari ini
-    
-    let start = new Date(today);
-    let end = new Date(today); // Default ke hari ini
-    
+    // Ambil "hari ini" dalam timezone tenant → format 'YYYY-MM-DD'
+    const todayStr = getTodayInTZ(tenantTimezone);
+
+    // Parse sebagai UTC midnight agar aritmatika tanggal aman (tidak terpengaruh tz lokal)
+    const today = new Date(todayStr + 'T00:00:00.000Z');
+
+    let startStr = todayStr;
+    let endStr   = todayStr;
+
     if (type === "this_week") {
-      // Ambil hari Senin dalam minggu ini
-      const day = today.getDay(); // 0 = Minggu, 1 = Senin, dst
-      const diffStart = today.getDate() - day + (day === 0 ? -6 : 1);
-      start = new Date(today.setDate(diffStart));
-      
-      // Hari Minggu di akhir minggu ini
-      end = new Date(start);
-      end.setDate(start.getDate() + 6);
+      // Senin minggu ini (getUTCDay: 0=Minggu, 1=Senin, …, 6=Sabtu)
+      const day = today.getUTCDay();
+      const diffStart = today.getUTCDate() - day + (day === 0 ? -6 : 1);
+      const startDate = new Date(today);
+      startDate.setUTCDate(diffStart);
+
+      const endDate = new Date(startDate);
+      endDate.setUTCDate(startDate.getUTCDate() + 6);
+
+      startStr = startDate.toISOString().split('T')[0];
+      endStr   = endDate.toISOString().split('T')[0];
+
     } else if (type === "this_month") {
-      // Tanggal 1 bulan ini
-      start = new Date(today.getFullYear(), today.getMonth(), 1);
-      // Tanggal terakhir bulan ini
-      end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      const year  = today.getUTCFullYear();
+      const month = today.getUTCMonth();
+
+      const startDate = new Date(Date.UTC(year, month, 1));
+      const endDate   = new Date(Date.UTC(year, month + 1, 0)); // hari terakhir bulan ini
+
+      startStr = startDate.toISOString().split('T')[0];
+      endStr   = endDate.toISOString().split('T')[0];
+
     } else if (type === "custom") {
-      start = customStartDate ? new Date(customStartDate) : today;
-      end = customEndDate ? new Date(customEndDate) : today;
+      startStr = customStartDate || todayStr;
+      endStr   = customEndDate   || todayStr;
     }
-    
-    return { 
-      startDate: start.toISOString().split('T')[0], 
-      endDate: end.toISOString().split('T')[0] 
-    };
+    // type === "today": startStr & endStr sudah di-set ke todayStr di atas
+
+    return { startDate: startStr, endDate: endStr };
   };
+
 
   const showToast = (message: string, type: "success" | "error") => {
     setToast({ message, type });
