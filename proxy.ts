@@ -5,15 +5,13 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 // Subdomain yang dikecualikan dari tenant check
-const EXCLUDED_SUBDOMAINS = new Set(['www', 'app', 'api', 'mail', 'smtp']);
+const EXCLUDED_SUBDOMAINS = new Set(['www', 'app', 'api', 'mail', 'smtp', 'pos', 'affiliate', 'admin']);
 
 // Root domain kita — baca dari env agar mudah ganti domain (strip protokol jika ada)
 const ROOT_DOMAIN = (process.env.NEXT_PUBLIC_APP_DOMAIN || 'cukurship.id').replace(/^https?:\/\//, "");
 
 /**
  * Ambil slug tenant dari hostname request.
- * Contoh: john-cukurship.johncukurship.online → "john-cukurship"
- * Untuk localhost: pakai query param ?tenant=john-cukurship sebagai fallback
  */
 function extractTenantSlug(request: NextRequest): string | null {
     const hostname = request.headers.get('host') || '';
@@ -36,9 +34,7 @@ function extractTenantSlug(request: NextRequest): string | null {
 }
 
 /**
- * Query Supabase via REST API (tidak bisa pakai Node modules di Edge Runtime).
- * Lookup menggunakan effective_slug (bukan slug) agar custom subdomain bekerja.
- * effective_slug = custom_slug jika sudah diatur, = slug jika belum.
+ * Query Supabase via REST API
  */
 async function getTenantBySlug(slug: string) {
     const encodedSlug = encodeURIComponent(slug);
@@ -60,13 +56,34 @@ async function getTenantBySlug(slug: string) {
 }
 
 export async function proxy(request: NextRequest) {
+    const url = request.nextUrl.clone();
+    const hostname = request.headers.get('host') || '';
     const { pathname } = request.nextUrl;
+    
+    // ─── 1. STATIC SUBDOMAIN REWRITES ──────────────────────────────────────────
+    const isLocal = hostname.includes('localhost') || hostname.includes('127.0.0.1') || hostname.startsWith('192.168.') || hostname.startsWith('10.');
+    const isPosOrigin = hostname === `pos.${ROOT_DOMAIN}` || (isLocal && hostname.startsWith('pos.localhost'));
+    const isAffiliateOrigin = hostname === `affiliate.${ROOT_DOMAIN}` || (isLocal && hostname.startsWith('affiliate.localhost'));
+    const isAdminOrigin = hostname === `admin.${ROOT_DOMAIN}` || (isLocal && hostname.startsWith('admin.localhost'));
 
-    // ─── BRANCH 1: ADMIN & SUPERADMIN AUTH ───────────────────────────────────
+    if (isPosOrigin && !pathname.startsWith('/pos')) {
+      url.pathname = `/pos${pathname === '/' ? '' : pathname}`;
+      return NextResponse.rewrite(url);
+    }
+    
+    if (isAffiliateOrigin && !pathname.startsWith('/affiliate')) {
+      url.pathname = `/affiliate${pathname === '/' ? '' : pathname}`;
+      return NextResponse.rewrite(url);
+    }
+    
+    if (isAdminOrigin && !pathname.startsWith('/admin')) {
+      url.pathname = `/admin${pathname === '/' ? '' : pathname}`;
+      return NextResponse.rewrite(url);
+    }
+
+    // ─── 2. ADMIN & SUPERADMIN AUTH ─────────────────────────────────────────
     const isAdminRoute = pathname.startsWith('/admin');
     const isSuperAdminRoute = pathname.startsWith('/superadmin');
-
-    // Halaman login/register admin HARUS dikecualikan dari auth guard untuk mencegah redirect loop
     const isPublicAdminPage = pathname === '/admin/login' || pathname === '/admin/register' || pathname === '/superadmin/login';
 
     if ((isAdminRoute || isSuperAdminRoute) && !isPublicAdminPage) {
@@ -88,7 +105,6 @@ export async function proxy(request: NextRequest) {
             if (!payloadBase64) throw new Error('Format token tidak valid');
             let base64Standard = payloadBase64.replace(/-/g, '+').replace(/_/g, '/');
             
-            // Pad base64 standard string to prevent atob DOMException in Edge Runtime
             while (base64Standard.length % 4) {
                 base64Standard += '=';
             }
@@ -110,29 +126,21 @@ export async function proxy(request: NextRequest) {
         }
     }
 
-    // ─── BRANCH 2: SUBDOMAIN TENANT ROUTING ──────────────────────────────────
+    // ─── 3. SUBDOMAIN TENANT ROUTING ────────────────────────────────────────
     const isApiRoute = pathname.startsWith('/api');
     const isStaticFile = pathname.startsWith('/_next') || pathname.startsWith('/favicon') || pathname.startsWith('/public');
     const isErrorPage = pathname === '/shop-not-found' || pathname === '/subscription-expired' || pathname === '/404-shop' || pathname === '/suspended-shop';
-
-    // [Fix 3] Admin & superadmin paths sepenuhnya dikecualikan dari tenant routing.
-    // Ini mencegah header tenant (x-tenant-id, x-tenant-slug) bocor ke halaman admin
-    // yang tidak membutuhkan konteks tenant & mencegah potensi konflik routing.
     const isPosRoute = pathname.startsWith('/pos');
+
     if (isAdminRoute || isSuperAdminRoute || isPosRoute || isStaticFile || isErrorPage) {
         return NextResponse.next();
     }
 
-    // [Fix 2] API auth routes dikecualikan dari x-tenant-slug injection.
-    // /api/auth/* (request-otp, verify-otp, login, logout) bekerja berdasarkan
-    // phone_number & JWT saja — tidak butuh konteks tenant sama sekali.
     const isAuthApiRoute = pathname.startsWith('/api/auth');
     if (isAuthApiRoute) {
         return NextResponse.next();
     }
 
-    // Untuk API routes NON-AUTH pada subdomain tenant: inject x-tenant-slug (tanpa DB call)
-    // sehingga API (store/info, posts, dll.) dapat melakukan lookup sendiri.
     if (isApiRoute) {
         const slugForApi = extractTenantSlug(request);
         if (slugForApi) {
@@ -145,35 +153,27 @@ export async function proxy(request: NextRequest) {
 
     const tenantSlug = extractTenantSlug(request);
 
-    // Tidak ada subdomain/tenant param → halaman utama (landing superadmin / marketing)
     if (!tenantSlug) {
         return NextResponse.next();
     }
 
-    // Ada slug → cek ke database
     try {
         const tenant = await getTenantBySlug(tenantSlug);
 
         if (!tenant) {
-            // Tenant tidak ditemukan → redirect ke halaman shop-not-found
             return NextResponse.redirect(new URL('/shop-not-found', request.url));
         }
 
-        // Cek apakah tenant aktif
         const isExpired = tenant.plan_expires_at && new Date(tenant.plan_expires_at) < new Date();
         if (!tenant.is_active || isExpired) {
             return NextResponse.redirect(new URL('/subscription-expired', request.url));
         }
 
-        // Tenant valid → inject headers ke request berikutnya
         const requestHeaders = new Headers(request.headers);
         requestHeaders.set('x-tenant-id', tenant.id);
         requestHeaders.set('x-tenant-slug', tenant.slug);
         requestHeaders.set('x-shop-name', tenant.shop_name);
 
-        // ─── AUTO REDIRECT: / → /dashboard ───────────────────────────────────
-        // Ketika user membuka subdomain tenant (misal john.johncukurship.online/)
-        // arahkan ke portal pelanggan terpadu (dashboard) yang menampilkan Home/Store di dalamnya.
         if (pathname === '/' || pathname === '') {
             return NextResponse.redirect(new URL('/dashboard', request.url));
         }
@@ -188,6 +188,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-    // Jalankan di SEMUA route kecuali file statis Next.js
     matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };

@@ -43,5 +43,8 @@
       "path": "/api/cron/booking-reminder",
       "schedule": "0 1 * * *"
     }
-  ]
+  ],
+  "framework": "nextjs",
+  "cleanUrls": true,
+  "trailingSlash": false
 }

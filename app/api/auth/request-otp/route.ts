@@ -69,12 +69,13 @@ export async function POST(request: Request) {
         const otpCode = generateOTP();
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 menit
 
-        // 2. Hapus SEMUA OTP sebelumnya untuk nomor ini
+        // 2. Hapus SEMUA OTP sebelumnya untuk nomor ini (used=true maupun false)
+        // FIX: Filter .eq('used', false) dihapus karena UNIQUE constraint pada phone_number
+        // menyebabkan INSERT gagal jika row used=true masih ada di tabel.
         await supabaseAdmin
             .from('otp_sessions')
             .delete()
-            .eq('phone_number', phoneNumber)
-            .eq('used', false);
+            .eq('phone_number', phoneNumber);
 
         // 3. Simpan OTP baru ke Supabase
         const { error: insertError } = await supabaseAdmin
