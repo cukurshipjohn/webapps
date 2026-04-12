@@ -6,7 +6,8 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await getUserFromToken(req)
+    // FIX #3: getUserFromToken adalah fungsi synchronous — tidak perlu await
+    const user = getUserFromToken(req)
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     requireRole(['superadmin'], user.role)
 
@@ -20,9 +21,9 @@ export async function GET(req: NextRequest) {
       .from('tenants')
       .select(`
         id,
-        name,
+        shop_name,
         slug,
-        plan_id,
+        plan,
         plan_expires_at,
         is_active,
         timezone,
@@ -40,6 +41,9 @@ export async function GET(req: NextRequest) {
           done_at
         )
       `)
+      // FIX #1 & #2: 'name' → 'shop_name', 'plan_id' → 'plan'
+      // Kedua kolom ini tidak ada di tabel tenants, menyebabkan PostgreSQL
+      // melempar error dan endpoint mengembalikan 500 setiap kali diakses.
       .order('plan_expires_at', { ascending: true })
 
     if (stage === 'expiring_soon') {
