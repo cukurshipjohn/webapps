@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
             tenantId = barberData.tenant_id;
         }
 
-        // 2. BACA JAM OPERASIONAL TOKO DARI tenant_settings
+        // 2. BACA JAM OPERASIONAL TOKO DARI tenant_settings (sebagai default)
         // Jika tidak ada record, gunakan default 10:00 – 20:00
         const { data: tenantSettings } = await supabaseAdmin
             .from('tenant_settings')
@@ -44,9 +44,33 @@ export async function GET(request: NextRequest) {
             .eq('tenant_id', tenantId)
             .single();
 
-        // Ambil string jam (HH:MM) — DB menyimpan TIME sebagai "HH:MM:SS", slice 0-5 sudah cukup
-        const openStr  = (tenantSettings?.operating_open  as string | null)?.slice(0, 5) ?? '10:00';
-        const closeStr = (tenantSettings?.operating_close as string | null)?.slice(0, 5) ?? '20:00';
+        // let — bukan const — karena bisa di-override oleh jadwal kustom kapster di bawah
+        let openStr  = (tenantSettings?.operating_open  as string | null)?.slice(0, 5) ?? '10:00';
+        let closeStr = (tenantSettings?.operating_close as string | null)?.slice(0, 5) ?? '20:00';
+
+        // 2b. OVERRIDE JAM BERDASARKAN JADWAL KAPSTER (barber_schedule)
+        // Priority: jadwal kapster > jam toko > default sistem
+        // Hari dihitung dengan WIB (UTC+7) agar sesuai waktu lokal Indonesia
+        const dayOfWeek = new Date(`${date}T12:00:00+07:00`).getDay(); // 0=Minggu, 1=Senin … 6=Sabtu
+
+        const { data: barberSchedule } = await supabaseAdmin
+            .from('barber_schedule')
+            .select('open_time, close_time, is_working')
+            .eq('barber_id', barberId)
+            .eq('day_of_week', dayOfWeek)
+            .eq('tenant_id', tenantId)
+            .maybeSingle(); // null jika kapster tidak punya jadwal kustom di hari ini
+
+        if (barberSchedule !== null) {
+            if (!barberSchedule.is_working) {
+                // Kapster tidak bekerja pada hari ini (sesuai jadwal kustom) → tidak ada slot
+                return NextResponse.json([]);
+            }
+            // Kapster punya jam sendiri — override jam toko
+            openStr  = (barberSchedule.open_time  as string)?.slice(0, 5) ?? openStr;
+            closeStr = (barberSchedule.close_time as string)?.slice(0, 5) ?? closeStr;
+        }
+        // barberSchedule === null → tidak ada jadwal kustom → tetap pakai jam toko (openStr/closeStr tidak berubah)
 
         // 3. CEK HARI LIBUR / CUTI (time_off)
         // Cari apakah ada rentang libur yang mencakup tanggal ini
@@ -89,10 +113,12 @@ export async function GET(request: NextRequest) {
         const gap = serviceType === 'home' ? DURATION_HOME_SERVICE : DURATION_BARBERSHOP;
         const availableSlots: Date[] = [];
 
-        // Buat slot berdasarkan jam operasional toko (dibaca dari tenant_settings)
+        // Buat slot berdasarkan jam efektif kapster:
+        //   - Jika kapster punya jadwal kustom (barber_schedule) → pakai openStr/closeStr kapster
+        //   - Jika tidak ada jadwal kustom               → pakai openStr/closeStr toko
         // Format ISO dengan offset +07:00 agar tidak terpengaruh timezone server
-        const openTimeWIB  = new Date(`${date}T${openStr}:00+07:00`);   // Jam buka dari pengaturan toko
-        const closeTimeWIB = new Date(`${date}T${closeStr}:00+07:00`);  // Jam tutup dari pengaturan toko
+        const openTimeWIB  = new Date(`${date}T${openStr}:00+07:00`);
+        const closeTimeWIB = new Date(`${date}T${closeStr}:00+07:00`);
 
         let currentTimeSlot = new Date(openTimeWIB);
 
