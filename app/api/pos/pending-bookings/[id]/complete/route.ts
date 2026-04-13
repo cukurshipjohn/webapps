@@ -24,7 +24,7 @@ export async function PATCH(req: Request, { params }: any) {
       .from('bookings')
       .select('id, tenant_id, barber_id, status, booking_source')
       .eq('id', bookingId)
-      .eq('booking_source', 'web')
+      .eq('booking_source', 'online') // FIX: booking dibuat dengan 'online' (bukan 'web')
       .in('status', ['pending', 'confirmed'])
       .single()
 

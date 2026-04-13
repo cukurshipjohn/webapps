@@ -31,7 +31,7 @@ export async function countPendingBookings(
       barbers ( name )
     `, { count: 'exact' })
     .eq('tenant_id', tenantId)
-    .eq('booking_source', 'web')
+    .eq('booking_source', 'online') // FIX: booking dibuat dengan 'online' (bukan 'web')
     .in('status', ['pending', 'confirmed'])
     .gte('start_time', todayStart.toISOString())
     .lte('start_time', todayEnd.toISOString())
