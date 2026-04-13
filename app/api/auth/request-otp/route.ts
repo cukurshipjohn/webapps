@@ -32,7 +32,7 @@ export async function POST(request: Request) {
         // (isAdminLogin=true). Jika datang dari portal lain (customer, affiliate, dll),
         // langsung tolak agar SUPERADMIN_PHONE tidak bisa di-track sebagai target OTP.
         const superadminPhoneGlobal = process.env.SUPERADMIN_PHONE;
-        if (superadminPhoneGlobal && phoneNumber === superadminPhoneGlobal && !isAdminLogin) {
+        if (superadminPhoneGlobal && phoneNumber === superadminPhoneGlobal && !isAdminLogin && !isAffiliateLogin) {
             return NextResponse.json({ message: 'Nomor tidak dapat digunakan di portal ini.' }, { status: 403 });
         }
 
