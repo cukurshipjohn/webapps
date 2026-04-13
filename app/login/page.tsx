@@ -29,7 +29,7 @@ function LoginContent() {
       const res = await fetch("/api/auth/request-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneNumber }),
+        body: JSON.stringify({ phoneNumber, portalType: 'customer' }),
       });
 
       const data = await res.json();

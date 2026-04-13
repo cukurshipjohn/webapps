@@ -82,7 +82,8 @@ export async function POST(req: Request) {
         },
         body: JSON.stringify({
           phoneNumber: normalizedPhone,
-          otpCode: otp
+          otpCode: otp,
+          portalType: 'pos',
         }),
         signal: AbortSignal.timeout(6000)
       })

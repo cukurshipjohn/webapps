@@ -9,7 +9,7 @@ function generateOTP(): string {
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { phoneNumber, isAdminLogin, isAffiliateLogin } = body;
+        const { phoneNumber, isAdminLogin, isAffiliateLogin, portalType } = body;
 
         if (!phoneNumber) {
             return NextResponse.json({ message: 'Nomor HP diperlukan.' }, { status: 400 });
@@ -135,7 +135,7 @@ export async function POST(request: Request) {
                         'Content-Type': 'application/json',
                         'Authorization': serviceSecret,
                     },
-                    body: JSON.stringify({ phoneNumber, otpCode }),
+                    body: JSON.stringify({ phoneNumber, otpCode, portalType: portalType || 'customer' }),
                     signal: AbortSignal.timeout(6000),
                 });
 

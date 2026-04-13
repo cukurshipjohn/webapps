@@ -23,7 +23,7 @@ export default function SuperadminLogin() {
             const res = await fetch("/api/auth/request-otp", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ phoneNumber: phone, isAdminLogin: true }),
+                body: JSON.stringify({ phoneNumber: phone, isAdminLogin: true, portalType: 'superadmin' }),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message);

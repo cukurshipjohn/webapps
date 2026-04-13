@@ -39,7 +39,7 @@ export default function AdminLoginContent() {
       const res = await fetch("/api/auth/request-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneNumber, isAdminLogin: true }),
+        body: JSON.stringify({ phoneNumber, isAdminLogin: true, portalType: 'admin' }),
       });
 
       const data = await res.json();
@@ -65,7 +65,7 @@ export default function AdminLoginContent() {
       const res = await fetch("/api/auth/request-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneNumber, isAdminLogin: true }),
+        body: JSON.stringify({ phoneNumber, isAdminLogin: true, portalType: 'admin' }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message);
