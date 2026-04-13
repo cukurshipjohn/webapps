@@ -505,10 +505,13 @@ export async function POST(request: NextRequest) {
                 await clearSession(chatId, tenant.id);
                 await upsertSession(chatId, tenant.id, barber.id, 'awaiting_customer', { cart: [] });
                 
+                // Tombol dinamis: tambah shortcut 'Lihat Booking' jika ada pending
+                const kasirKeyboard: any[] = [[{ text: '👤 Tanpa Nama', callback_data: 'customer_skip' }]];
+                if (pendingAlert.count > 0) {
+                    kasirKeyboard.push([{ text: `📋 Lihat ${pendingAlert.count} Booking Online`, callback_data: 'show_bookings' }]);
+                }
                 await sendTelegramMessage(chatId, `💈 <b>Transaksi Baru</b>\n\nKetik nama pelanggan,\natau pilih tombol di bawah:${warningText}`, {
-                    reply_markup: {
-                        inline_keyboard: [[ { text: '👤 Tanpa Nama', callback_data: 'customer_skip' } ]]
-                    }
+                    reply_markup: { inline_keyboard: kasirKeyboard }
                 });
             } else if (textLower === '/pengeluaran') {
                 const EXPENSE_STEPS = ['expense_category', 'expense_description', 'expense_amount', 'expense_receipt', 'expense_confirm'];
@@ -585,6 +588,39 @@ export async function POST(request: NextRequest) {
                     const total = todayBookings?.reduce((sum, b: any) => sum + (b.final_price ?? 0), 0) || 0;
                     await sendTelegramMessage(chatId, `📊 <b>Laporan Shift Kamu Hari Ini</b>\n📅 ${todayLocal} (${getTimezoneLabel(tz)})\n${'─'.repeat(28)}\n👤 Total Pelanggan: <b>${count}</b>\n💰 Omset: <b>Rp ${formatRupiah(total)}</b>`);
                 }
+
+            } else if (textLower === '/booking') {
+                // ─── COMMAND /booking: Tampilkan daftar booking online pending hari ini ───
+                const { countPendingBookings: cpb } = await import('@/lib/booking-alerts')
+                const pendingResult = await cpb(
+                    tenant.id,
+                    (barber as any).role === 'barber' ? barber.id : null,
+                    (barber as any).role as 'barber' | 'cashier'
+                )
+
+                if (pendingResult.count === 0) {
+                    await sendTelegramMessage(chatId,
+                        `📋 <b>Booking Online Hari Ini</b>\n\nSemua booking sudah ditangani ✅\n\nKetuk /kasir untuk transaksi baru.`)
+                    return NextResponse.json({ ok: true })
+                }
+
+                let bookingMsg = `📋 <b>Booking Online Hari Ini (${pendingResult.count})</b>\n${'─'.repeat(28)}\n`
+                const bookingKeys: any[] = []
+
+                for (const b of pendingResult.bookings) {
+                    const cN  = (b as any).users?.name    ?? 'Tamu'
+                    const sN  = (b as any).services?.name ?? '—'
+                    const baN = (b as any).barbers?.name  ?? '—'
+                    const st  = new Date(b.start_time).toLocaleString('id-ID', { timeStyle: 'short', timeZone: tz })
+                    bookingMsg += `\n👤 <b>${cN}</b>\n✂️ ${baN}  •  💈 ${sN}  •  ⏰ ${st}\n`
+                    bookingKeys.push([
+                        { text: `✅ Selesai`, callback_data: `bk_done_${b.id}` },
+                        { text: `❌ Batal`,   callback_data: `bk_cancel_${b.id}` },
+                    ])
+                }
+
+                await sendTelegramMessage(chatId, bookingMsg, { reply_markup: { inline_keyboard: bookingKeys } })
+                return NextResponse.json({ ok: true })
 
             } else {
                 if (!session || session.step === 'idle') {
@@ -1332,6 +1368,213 @@ export async function POST(request: NextRequest) {
                 await editTelegramMessage(chatId, messageId, '❌ Pengajuan dibatalkan.');
                 await answerCallbackQuery(callbackId);
                 return NextResponse.json({ ok: true });
+            }
+
+            // ═══════════════════════════════════════════════════════════════
+            // BOOKING ONLINE — Kelola dari Telegram Bot
+            // ═══════════════════════════════════════════════════════════════
+
+            // show_bookings: tampilkan daftar pending (dari tombol di /kasir atau kembali)
+            if (data === 'show_bookings') {
+                const { countPendingBookings: cpb2 } = await import('@/lib/booking-alerts')
+                const pr = await cpb2(
+                    tenant.id,
+                    (barber as any).role === 'barber' ? barber.id : null,
+                    (barber as any).role as 'barber' | 'cashier'
+                )
+                await answerCallbackQuery(callbackId)
+                if (pr.count === 0) {
+                    await editTelegramMessage(chatId, messageId,
+                        `📋 <b>Booking Online Hari Ini</b>\n\nSemua booking sudah ditangani ✅\n\nKetuk /kasir untuk transaksi baru.`
+                    )
+                    return NextResponse.json({ ok: true })
+                }
+                let bMsg = `📋 <b>Booking Online Hari Ini (${pr.count})</b>\n${'─'.repeat(28)}\n`
+                const bKeys: any[] = []
+                for (const b of pr.bookings) {
+                    const cN  = (b as any).users?.name    ?? 'Tamu'
+                    const sN  = (b as any).services?.name ?? '—'
+                    const baN = (b as any).barbers?.name  ?? '—'
+                    const st  = new Date(b.start_time).toLocaleString('id-ID', { timeStyle: 'short', timeZone: tz })
+                    bMsg += `\n👤 <b>${cN}</b>\n✂️ ${baN}  •  💈 ${sN}  •  ⏰ ${st}\n`
+                    bKeys.push([
+                        { text: `✅ Selesai`, callback_data: `bk_done_${b.id}` },
+                        { text: `❌ Batal`,   callback_data: `bk_cancel_${b.id}` },
+                    ])
+                }
+                await editTelegramMessage(chatId, messageId, bMsg, { reply_markup: { inline_keyboard: bKeys } })
+                return NextResponse.json({ ok: true })
+            }
+
+            // bk_done_<uuid>: tampilkan pilihan metode bayar untuk booking ini
+            if (data.startsWith('bk_done_')) {
+                const bookingId = data.replace('bk_done_', '')
+                const { data: bk } = await supabaseAdmin
+                    .from('bookings')
+                    .select('id, start_time, users(name), services(name)')
+                    .eq('id', bookingId)
+                    .eq('tenant_id', tenant.id)
+                    .single()
+                await answerCallbackQuery(callbackId)
+                const cN = (bk as any)?.users?.name    ?? 'Tamu'
+                const sN = (bk as any)?.services?.name ?? 'Layanan'
+                const st = bk ? new Date((bk as any).start_time).toLocaleString('id-ID', { timeStyle: 'short', timeZone: tz }) : '—'
+                await editTelegramMessage(chatId, messageId,
+                    `✅ <b>Selesaikan Booking</b>\n${'─'.repeat(28)}\n`+
+                    `👤 Pelanggan : <b>${cN}</b>\n`+
+                    `💈 Layanan   : ${sN}\n`+
+                    `⏰ Jam       : ${st}\n\n`+
+                    `Pilih metode pembayaran:`, {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: '💵 Cash',    callback_data: `bk_pay_cash_${bookingId}` },
+                                { text: '📱 QRIS',    callback_data: `bk_pay_qris_${bookingId}` },
+                            ],
+                            [{ text: '🏦 Transfer',   callback_data: `bk_pay_transfer_${bookingId}` }],
+                            [{ text: '🔙 Kembali',    callback_data: 'show_bookings' }],
+                        ]
+                    }
+                })
+                return NextResponse.json({ ok: true })
+            }
+
+            // bk_pay_<method>_<uuid>: update booking completed + kirim WA
+            if (data.startsWith('bk_pay_')) {
+                // Format: bk_pay_cash_<uuid> | bk_pay_qris_<uuid> | bk_pay_transfer_<uuid>
+                // UUID pakai '-' bukan '_', jadi split aman dengan indexOf pertama setelah prefix
+                const withoutPrefix = data.replace('bk_pay_', '')          // "cash_<uuid>"
+                const sepIdx        = withoutPrefix.indexOf('_')
+                const paymentMethod = withoutPrefix.substring(0, sepIdx)   // "cash"
+                const bookingId     = withoutPrefix.substring(sepIdx + 1)  // "<uuid>"
+
+                if (!['cash', 'qris', 'transfer'].includes(paymentMethod)) {
+                    await answerCallbackQuery(callbackId, '❌ Metode tidak valid')
+                    return NextResponse.json({ ok: true })
+                }
+
+                // Validasi + update booking
+                const { data: bkData, error: bkErr } = await supabaseAdmin
+                    .from('bookings')
+                    .select('id, tenant_id, barber_id, user_id, service_id, final_price, booking_source, status')
+                    .eq('id', bookingId)
+                    .eq('tenant_id', tenant.id)
+                    .eq('booking_source', 'online')
+                    .in('status', ['pending', 'confirmed'])
+                    .single()
+
+                if (bkErr || !bkData) {
+                    await answerCallbackQuery(callbackId, '❌ Booking tidak ditemukan atau sudah diproses')
+                    return NextResponse.json({ ok: true })
+                }
+
+                const { error: upErr } = await supabaseAdmin
+                    .from('bookings')
+                    .update({ status: 'completed', payment_method: paymentMethod, payment_status: 'paid' })
+                    .eq('id', bookingId)
+
+                if (upErr) {
+                    await answerCallbackQuery(callbackId, '❌ Gagal memperbarui booking')
+                    return NextResponse.json({ ok: true })
+                }
+
+                // WA notifikasi ke pelanggan, barber, owner (fire-and-forget)
+                ;(async () => {
+                    try {
+                        const waServiceUrl = process.env.WHATSAPP_SERVICE_URL
+                        const waSecret     = process.env.WHATSAPP_SERVICE_SECRET
+                        const ownerPhone   = process.env.OWNER_PHONE_NUMBER
+                        if (!waServiceUrl || !waSecret) return
+                        const [
+                            { data: uRow }, { data: bRow }, { data: sRow }, { data: tsRow2 }
+                        ] = await Promise.all([
+                            supabaseAdmin.from('users').select('name, phone_number').eq('id', (bkData as any).user_id).single(),
+                            supabaseAdmin.from('barbers').select('name, phone').eq('id', (bkData as any).barber_id).single(),
+                            supabaseAdmin.from('services').select('name').eq('id', (bkData as any).service_id).single(),
+                            supabaseAdmin.from('tenant_settings').select('wa_session_id').eq('tenant_id', (bkData as any).tenant_id).single(),
+                        ])
+                        const sid    = (tsRow2 as any)?.wa_session_id ?? null
+                        const cName  = (uRow as any)?.name         ?? 'Pelanggan'
+                        const cPhone = (uRow as any)?.phone_number  ?? null
+                        const bName  = (bRow as any)?.name         ?? 'Barber'
+                        const bPhone = (bRow as any)?.phone        ?? null
+                        const sName  = (sRow as any)?.name         ?? 'Layanan'
+                        const price  = ((bkData as any).final_price ?? 0).toLocaleString('id-ID')
+                        const pLabel = paymentMethod === 'cash' ? 'Tunai' : paymentMethod === 'qris' ? 'QRIS' : 'Transfer'
+                        const nowStr = new Date().toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short', timeZone: tz })
+                        const sendW  = (ph: string, msg: string) => fetch(`${waServiceUrl}/send-message`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: waSecret },
+                            body: JSON.stringify({ session_id: sid, phoneNumber: ph, message: msg }),
+                        }).catch(e => console.error('[tg/wa]', e))
+                        if (cPhone) await sendW(cPhone,
+                            `✅ *Layanan Selesai!*\n\nHalo *${cName}*, terima kasih sudah kunjungi barbershop kami 🙏\n\n📋 *Ringkasan:*\n• Layanan : ${sName}\n• Barber  : ${bName}\n• Total   : Rp ${price}\n• Bayar   : ${pLabel}\n• Waktu   : ${nowStr}\n\nSampai jumpa lagi! 💈`)
+                        if (bPhone) await sendW(bPhone,
+                            `✅ *Booking Selesai*\n\nPelanggan : ${cName}\nLayanan   : ${sName}\nTotal     : Rp ${price} (${pLabel})\nWaktu     : ${nowStr}`)
+                        if (ownerPhone) await sendW(ownerPhone,
+                            `💰 *Transaksi Booking Selesai*\n\nPelanggan : ${cName}\nBarber    : ${bName}\nLayanan   : ${sName}\nNominal   : Rp ${price} (${pLabel})\nWaktu     : ${nowStr}`)
+                    } catch (e) { console.error('[tg/wa-complete]', e) }
+                })()
+
+                const mLabel: Record<string, string> = { cash: '💵 Tunai', qris: '📱 QRIS', transfer: '🏦 Transfer' }
+                await answerCallbackQuery(callbackId, '✅ Booking berhasil diselesaikan!')
+                await editTelegramMessage(chatId, messageId,
+                    `✅ <b>Booking Diselesaikan</b>\n${'─'.repeat(28)}\n`+
+                    `Pembayaran : ${mLabel[paymentMethod]}\n\n`+
+                    `WA konfirmasi sudah dikirim ke pelanggan.\n\n`+
+                    `Ketuk /booking untuk lihat booking lain atau /kasir untuk transaksi baru.`
+                )
+                return NextResponse.json({ ok: true })
+            }
+
+            // bk_cancel_<uuid>: minta konfirmasi sebelum batalkan
+            if (data.startsWith('bk_cancel_') && !data.startsWith('bk_cancel_confirm_')) {
+                const bookingId = data.replace('bk_cancel_', '')
+                const { data: bk } = await supabaseAdmin
+                    .from('bookings')
+                    .select('id, users(name), services(name)')
+                    .eq('id', bookingId)
+                    .eq('tenant_id', tenant.id)
+                    .single()
+                await answerCallbackQuery(callbackId)
+                const cN = (bk as any)?.users?.name    ?? 'Tamu'
+                const sN = (bk as any)?.services?.name ?? 'Layanan'
+                await editTelegramMessage(chatId, messageId,
+                    `❓ <b>Konfirmasi Pembatalan</b>\n${'─'.repeat(28)}\n`+
+                    `Yakin ingin membatalkan booking:\n\n`+
+                    `👤 Pelanggan : <b>${cN}</b>\n`+
+                    `💈 Layanan   : ${sN}\n\n`+
+                    `⚠️ Tindakan ini tidak dapat dibatalkan.`, {
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: '✅ Ya, Batalkan',   callback_data: `bk_cancel_confirm_${bookingId}` },
+                            { text: '🔙 Tidak, Kembali', callback_data: 'show_bookings' },
+                        ]]
+                    }
+                })
+                return NextResponse.json({ ok: true })
+            }
+
+            // bk_cancel_confirm_<uuid>: eksekusi pembatalan
+            if (data.startsWith('bk_cancel_confirm_')) {
+                const bookingId = data.replace('bk_cancel_confirm_', '')
+                const { error: cancelErr } = await supabaseAdmin
+                    .from('bookings')
+                    .update({ status: 'cancelled' })
+                    .eq('id', bookingId)
+                    .eq('tenant_id', tenant.id)
+                    .eq('booking_source', 'online')
+                    .in('status', ['pending', 'confirmed'])
+                await answerCallbackQuery(callbackId, cancelErr ? '❌ Gagal membatalkan' : '✅ Booking dibatalkan')
+                if (cancelErr) {
+                    await editTelegramMessage(chatId, messageId,
+                        `❌ Gagal membatalkan booking. Mungkin sudah diproses sebelumnya.\n\nKetuk /booking untuk cek status.`)
+                } else {
+                    await editTelegramMessage(chatId, messageId,
+                        `❌ <b>Booking Dibatalkan</b>\n${'─'.repeat(28)}\n`+
+                        `Booking telah dibatalkan.\n\nKetuk /booking untuk lihat booking lain.`)
+                }
+                return NextResponse.json({ ok: true })
             }
 
             await answerCallbackQuery(callbackId);
