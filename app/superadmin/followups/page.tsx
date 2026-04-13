@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -13,7 +13,7 @@ interface FollowUpItem {
     done_at: string | null;
     created_at: string;
     updated_at: string;
-    tenants?: { id: string; name: string; slug: string };
+    tenants?: { id: string; shop_name: string; slug: string };
     users?: { name: string }; // Admin yang merekam
 }
 
@@ -230,7 +230,7 @@ export default function SuperadminFollowUps() {
                                     return (
                                         <tr key={item.id} className="border-b border-cyan-900/20 hover:bg-white/5 transition-colors group">
                                             <td className="px-5 py-4">
-                                                <p className="text-white font-bold mb-0.5">{item.tenants?.name || 'Tenant Dihapus'}</p>
+                                                <p className="text-white font-bold mb-0.5">{item.tenants?.shop_name || 'Tenant Dihapus'}</p>
                                                 {item.tenants?.slug && (
                                                     <span className="text-[10px] text-cyan-400/50 bg-cyan-900/20 px-2 py-0.5 rounded-full font-mono">
                                                         {item.tenants?.slug}

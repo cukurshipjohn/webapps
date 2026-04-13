@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 
 interface TenantPipelineItem {
   id: string;
-  name: string;
+  shop_name: string;   // Nama toko (bukan 'name' — lihat skema tenants di DB)
   slug: string;
-  plan_id: string;
+  plan: string;        // Nama paket (bukan 'plan_id' — lihat skema tenants di DB)
   plan_expires_at: string | null;
   timezone: string;
   stage: 'expiring_soon' | 'at_risk' | 'churned' | 'healthy';
@@ -17,7 +17,7 @@ interface TenantPipelineItem {
   last_followup_at: string | null;
   users: {
     name: string;
-    phone: string;
+    phone_number: string; // Kolom di tabel users bernama phone_number, bukan phone
   } | null;
   superadmin_followups: Array<{
     id: string;
@@ -287,7 +287,7 @@ function PipelineTable({
                             <tr key={t.id} className={`${bgRow} border-b border-cyan-900/10 hover:bg-white/5 transition-colors`}>
                                 <td className="px-5 py-4">
                                     <div className="flex items-center gap-2">
-                                        <p className="text-white font-bold">{t.name}</p>
+                                        <p className="text-white font-bold">{t.shop_name}</p>
                                         {t.stage === 'at_risk' && <span title="Resiko Churn" className="text-red-400">⚠️</span>}
                                     </div>
                                     <a href={`https://${t.slug}.${APP_DOMAIN}`} target="_blank" className="font-mono text-xs text-cyan-400/70 hover:text-cyan-400">
@@ -451,7 +451,7 @@ function FollowUpDrawer({ tenant, open, onClose, onSuccess, getToken }: any) {
                     <div>
                         <h2 className="text-xl font-bold text-white">{tenant.name}</h2>
                         <p className="text-xs text-neutral-400 mt-1 font-mono">
-                            Plan: <span className="text-amber-400">{tenant.plan_id}</span> • Sisa {tenant.days_until_expiry ?? 0} hari
+                            Plan: <span className="text-amber-400">{tenant.plan}</span> • Sisa {tenant.days_until_expiry ?? 0} hari
                         </p>
                     </div>
                     <button onClick={onClose} className="p-2 bg-neutral-800 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white">✕</button>
@@ -597,7 +597,7 @@ function SendWAModal({ tenant, open, onClose, onSuccess, getToken }: any) {
     if (!open || !tenant) return null;
 
     const currentMsgPreview = tab === 'template' 
-        ? waTemplates[selectedTemplate].generate(tenant.name || '')
+        ? waTemplates[selectedTemplate].generate(tenant.shop_name || '')
         : customMsg;
 
     const handleSend = async () => {
@@ -643,7 +643,7 @@ function SendWAModal({ tenant, open, onClose, onSuccess, getToken }: any) {
                         </h2>
                         <p className="text-sm text-neutral-400 mt-1">
                             Kepada <span className="font-bold text-white">{tenant.users?.name || 'Owner'}</span> 
-                            <span className="font-mono bg-neutral-800 px-2 py-0.5 rounded ml-2 text-emerald-400">+{tenant.users?.phone || '???'}</span>
+                            <span className="font-mono bg-neutral-800 px-2 py-0.5 rounded ml-2 text-emerald-400">+{tenant.users?.phone_number || '???'}</span>
                         </p>
                     </div>
                     <button onClick={onClose} className="p-1 text-neutral-500 hover:text-white">✕</button>
