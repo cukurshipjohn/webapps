@@ -108,16 +108,10 @@ export async function POST(request: NextRequest) {
         // ── Validasi limit layanan (barbershop & home_service only) ──
         if (service_type !== SERVICE_TYPES.POS_KASIR) {
             const plan = getPlanById(planId);
-        // Determine max services per plan:
-            //   trial          = unlimited (demo penuh Business — lihat billing-plans.ts)
-            //   starter / starter_annual = 5
-            //   pro, pro_annual, business, business_annual = unlimited
-            let maxServices: number;
-            if (planId === 'starter' || planId === 'starter_annual') {
-                maxServices = 5;
-            } else {
-                maxServices = 999999; // trial, pro, business = unlimited
-            }
+        // Semua plan: layanan (services) tidak dibatasi jumlahnya.
+            // Batasan ada di sisi BOOKING per bulan (max_bookings_per_month)
+            // dan home service per bulan (max_home_service_per_month) — bukan di jumlah layanan.
+            const maxServices = 999999; // unlimited untuk semua plan
 
             const { count: currentCount } = await supabaseAdmin
                 .from('services')
