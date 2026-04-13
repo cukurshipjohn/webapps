@@ -460,6 +460,8 @@ function MainPosScreen({ state, dispatch, isDarkMode, setIsDarkMode, fetchWithTo
   const [isSubmittingExpense, setIsSubmittingExpense] = useState(false)
 
   const [completingId, setCompletingId] = useState<string | null>(null)
+  const [cancelingId, setCancelingId]    = useState<string | null>(null)   // booking id sedang diproses cancel
+  const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null) // booking id yang menunggu konfirmasi
   const [pendingPayModal, setPendingPayModal] = useState<string | null>(null) // booking id
   const [toast, setToast] = useState<string | null>(null)
 
@@ -509,6 +511,30 @@ function MainPosScreen({ state, dispatch, isDarkMode, setIsDarkMode, fetchWithTo
       showToast('❌ ' + (err.message || 'Gagal menyelesaikan booking'))
     } finally {
       setCompletingId(null)
+    }
+  }
+
+  const handleCancelBooking = async (bookingId: string) => {
+    setCancelingId(bookingId)
+    try {
+      const res = await fetchWithToken(`/api/pos/pending-bookings/${bookingId}/cancel`, {
+        method: 'PATCH',
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        throw new Error(d.error || 'Gagal')
+      }
+      const newList = pendingList.filter(b => b.id !== bookingId)
+      setPendingList(newList)
+      setPendingCount(newList.length)
+      setCancelConfirmId(null)
+      showToast('🚫 Booking berhasil dibatalkan')
+      if (newList.length === 0) setShowPendingDrawer(false)
+    } catch (err: any) {
+      showToast('❌ ' + (err.message || 'Gagal membatalkan booking'))
+      setCancelConfirmId(null)
+    } finally {
+      setCancelingId(null)
     }
   }
   
@@ -833,7 +859,7 @@ function MainPosScreen({ state, dispatch, isDarkMode, setIsDarkMode, fetchWithTo
           {/* Overlay */}
           <div
             style={{ flex: 1, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
-            onClick={() => { setShowPendingDrawer(false); setPendingPayModal(null) }}
+            onClick={() => { setShowPendingDrawer(false); setPendingPayModal(null); setCancelConfirmId(null) }}
           />
           {/* Drawer Panel */}
           <div style={{
@@ -882,8 +908,43 @@ function MainPosScreen({ state, dispatch, isDarkMode, setIsDarkMode, fetchWithTo
                       </span>
                     </div>
 
-                    {showPay ? (
-                      // Mini payment method selector
+                    {/* ── ACTION AREA ─────────────────────────────── */}
+                    {cancelConfirmId === booking.id ? (
+                      // Konfirmasi pembatalan
+                      <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10, padding: 12 }}>
+                        <p style={{ fontSize: 13, fontWeight: 700, color: '#f87171', margin: '0 0 4px' }}>⚠️ Batalkan booking ini?</p>
+                        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', margin: '0 0 10px' }}>Pelanggan akan mendapat notifikasi WA. Tindakan ini tidak bisa diurungkan.</p>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button
+                            onClick={() => setCancelConfirmId(null)}
+                            disabled={cancelingId === booking.id}
+                            style={{
+                              flex: 1, padding: '8px 4px', borderRadius: 8,
+                              border: '1px solid rgba(255,255,255,0.12)',
+                              background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)',
+                              fontWeight: 600, fontSize: 12, cursor: 'pointer',
+                            }}
+                          >
+                            Tidak, Kembali
+                          </button>
+                          <button
+                            onClick={() => handleCancelBooking(booking.id)}
+                            disabled={cancelingId === booking.id}
+                            style={{
+                              flex: 1, padding: '8px 4px', borderRadius: 8,
+                              border: '1px solid rgba(239,68,68,0.4)',
+                              background: 'rgba(239,68,68,0.15)', color: '#f87171',
+                              fontWeight: 700, fontSize: 12,
+                              cursor: cancelingId === booking.id ? 'not-allowed' : 'pointer',
+                              opacity: cancelingId === booking.id ? 0.5 : 1,
+                            }}
+                          >
+                            {cancelingId === booking.id ? '⏳ Membatalkan...' : '✅ Ya, Batalkan'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : showPay ? (
+                      // Pilihan metode pembayaran
                       <div>
                         <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', marginBottom: 8 }}>Pilih metode pembayaran:</p>
                         <div style={{ display: 'flex', gap: 8 }}>
@@ -902,19 +963,32 @@ function MainPosScreen({ state, dispatch, isDarkMode, setIsDarkMode, fetchWithTo
                             </button>
                           ))}
                         </div>
-                        <button onClick={() => setPendingPayModal(null)} style={{ marginTop: 8, width: '100%', padding: '6px', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 12 }}>Batal</button>
+                        <button onClick={() => setPendingPayModal(null)} style={{ marginTop: 8, width: '100%', padding: '6px', background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: 12 }}>← Kembali</button>
                       </div>
                     ) : (
-                      <button
-                        onClick={() => setPendingPayModal(booking.id)}
-                        style={{
-                          width: '100%', padding: '10px', borderRadius: 8,
-                          background: 'rgba(20,184,166,0.15)', border: '1px solid rgba(20,184,166,0.3)',
-                          color: '#2dd4bf', fontWeight: 700, fontSize: 13, cursor: 'pointer',
-                        }}
-                      >
-                        ✅ Selesaikan
-                      </button>
+                      // Tombol aksi utama: Selesaikan + Batalkan
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={() => setPendingPayModal(booking.id)}
+                          style={{
+                            flex: 2, padding: '10px 8px', borderRadius: 8,
+                            background: 'rgba(20,184,166,0.15)', border: '1px solid rgba(20,184,166,0.3)',
+                            color: '#2dd4bf', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                          }}
+                        >
+                          ✅ Selesaikan
+                        </button>
+                        <button
+                          onClick={() => { setPendingPayModal(null); setCancelConfirmId(booking.id) }}
+                          style={{
+                            flex: 1, padding: '10px 8px', borderRadius: 8,
+                            background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
+                            color: '#f87171', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+                          }}
+                        >
+                          ❌ Batal
+                        </button>
+                      </div>
                     )}
                   </div>
                 )
