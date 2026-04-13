@@ -49,13 +49,13 @@ export async function PATCH(req: Request, { params }: any) {
     }
 
     // 4. Update status transaksi → completed
+    // GAP #4 FIX: hapus updated_at — kolom ini tidak ada di skema tabel bookings
     const { error: updateError } = await supabaseAdmin
       .from('bookings')
       .update({
         status:         'completed',
         payment_method: payment_method,
         payment_status: 'paid',
-        updated_at:     new Date().toISOString(),
       })
       .eq('id', bookingId)
 

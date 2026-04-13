@@ -44,14 +44,19 @@ export async function POST(req: Request) {
       }
     }
 
-    const { data: existingGroup } = await supabaseAdmin
-      .from('bookings')
-      .select('id')
-      .eq('booking_group_id', booking_group_id)
-      .limit(1)
+    // GAP #3 FIX: hanya cek duplikat jika booking_group_id benar-benar ada
+    // Sebelumnya, jika booking_group_id = null, .eq('booking_group_id', null) akan
+    // mencocokkan SEMUA baris dengan group_id NULL → false 409 pada walk-in normal
+    if (booking_group_id) {
+      const { data: existingGroup } = await supabaseAdmin
+        .from('bookings')
+        .select('id')
+        .eq('booking_group_id', booking_group_id)
+        .limit(1)
 
-    if (existingGroup && existingGroup.length > 0) {
-      return NextResponse.json({ error: 'Transaksi sudah diproses sebelumnya' }, { status: 409 })
+      if (existingGroup && existingGroup.length > 0) {
+        return NextResponse.json({ error: 'Transaksi sudah diproses sebelumnya' }, { status: 409 })
+      }
     }
 
     const serviceIds = items.map((itm: any) => itm.service_id)
