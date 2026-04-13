@@ -439,11 +439,11 @@ export default function DashboardPage() {
               {shop?.services && shop.services.length > 0 ? (
                 <div className="space-y-2">
                   {/* Group by type: BARBERSHOP first, HOME second */}
-                  {['BARBERSHOP', 'HOME'].map(type => {
+                  {['barbershop', 'home_service'].map(type => {
                     const typeServices = shop.services.filter(s => s.service_type === type);
                     if (typeServices.length === 0) return null;
-                    const typeEmoji = type === 'HOME' ? '🏠' : '✂️';
-                    const typeLabel = type === 'HOME' ? 'Home Service' : 'Di Barbershop';
+                    const typeEmoji = type === 'home_service' ? '🏠' : '✂️';
+                    const typeLabel = type === 'home_service' ? 'Home Service' : 'Di Barbershop';
                     return (
                       <div key={type}>
                         <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5 flex items-center gap-1.5" style={{ color: `${accent}40` }}>
@@ -452,7 +452,7 @@ export default function DashboardPage() {
                         <div className="space-y-1.5">
                           {typeServices.map(svc => {
                             const cleanName = svc.name.replace('HOME | ', '').replace('BARBER | ', '');
-                            const bookHref = `/book?type=${type === 'HOME' ? 'home' : 'barbershop'}&service=${svc.id}`;
+                            const bookHref = `/book?type=${type === 'home_service' ? 'home' : 'barbershop'}&service=${svc.id}`;
                             return (
                               <Link key={svc.id} href={bookHref} onClick={handleBookClick}
                                 className="flex items-center justify-between p-3 rounded-xl border transition-all active:scale-95"
