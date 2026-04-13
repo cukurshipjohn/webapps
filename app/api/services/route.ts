@@ -6,25 +6,45 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type'); // 'barbershop' atau 'home'
 
-    // Ambil tenant dari header (di-inject oleh middleware)
-    const { tenantId } = getTenantFromRequest(request);
+    // Ambil tenant dari header (di-inject oleh middleware).
+    // Catatan: proxy.ts hanya men-set x-tenant-id untuk page requests.
+    // Untuk API calls dari customer portal, yang tersedia hanya x-tenant-slug.
+    const { tenantId, tenantSlug } = getTenantFromRequest(request);
 
     try {
+        // Resolve tenant ID: coba dari x-tenant-id dulu,
+        // fallback ke lookup DB menggunakan x-tenant-slug jika kosong.
+        let resolvedTenantId = tenantId;
+        if (!resolvedTenantId && tenantSlug) {
+            const { data: tenantData } = await supabaseAdmin
+                .from('tenants')
+                .select('id')
+                .or(`slug.eq.${tenantSlug},effective_slug.eq.${tenantSlug}`)
+                .single();
+            resolvedTenantId = tenantData?.id ?? null;
+        }
+
         let query = supabaseAdmin
             .from('services')
             .select('*')
+            .eq('is_active', true)
             .order('price', { ascending: true });
 
-        // Filter tenant jika ada
-        if (tenantId) {
-            query = query.eq('tenant_id', tenantId);
+        // Wajib filter per tenant — jangan kembalikan data lintas tenant
+        if (resolvedTenantId) {
+            query = query.eq('tenant_id', resolvedTenantId);
         }
 
-        // Filter berdasarkan prefix nama layanan
-        if (type === 'home') {
-            query = query.ilike('name', 'HOME |%');
-        } else if (type === 'barbershop') {
-            query = query.ilike('name', 'BARBER |%');
+        // Filter berdasarkan service_type (kolom enum, bukan prefix nama lama)
+        // Ini mendukung format baru admin panel sekaligus backward-compatible
+        // dengan layanan lama karena kolom service_type selalu diisi saat insert.
+        if (type === 'barbershop') {
+            query = query.eq('service_type', 'barbershop');
+        } else if (type === 'home') {
+            query = query.eq('service_type', 'home_service');
+        } else {
+            // Default: exclude pos_kasir — hanya untuk kasir internal, bukan booking
+            query = query.neq('service_type', 'pos_kasir');
         }
 
         const { data: services, error } = await query;
@@ -56,3 +76,4 @@ export async function POST() {
         return new NextResponse(error.message, { status: 500 });
     }
 }
+
