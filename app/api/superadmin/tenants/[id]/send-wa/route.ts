@@ -47,12 +47,20 @@ export async function POST(
 
       const finalMessage = message ?? getWATemplate(template, tenant?.shop_name ?? '')
 
-      const waResponse = await fetch(`${waServiceUrl}/send`, {
+      // FIX #1: endpoint /send → /send-message (sesuai server.js)
+      // FIX #2: tambah Authorization header (server.js wajibkan via validateSecret)
+      // FIX #3: field 'phone' → 'phoneNumber' (sesuai body yang dibaca server.js)
+      // Pattern ini sama dengan withdrawals/route.ts yang sudah berjalan benar
+      const waSecret = process.env.WHATSAPP_SERVICE_SECRET ?? ''
+      const waResponse = await fetch(`${waServiceUrl}/send-message`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': waSecret,
+        },
         body: JSON.stringify({
-          phone:   ownerPhone,
-          message: finalMessage,
+          phoneNumber: ownerPhone,
+          message:     finalMessage,
         }),
       })
 
