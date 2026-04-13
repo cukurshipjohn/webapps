@@ -96,7 +96,8 @@ export async function GET(request: NextRequest) {
 
         let currentTimeSlot = new Date(openTimeWIB);
 
-        while (currentTimeSlot <= closeTimeWIB) {
+        // Slot hanya dibuat jika waktu SELESAI-nya tidak melampaui jam tutup
+        while (currentTimeSlot.getTime() + gap * 60000 <= closeTimeWIB.getTime()) {
             const slotEnd = new Date(currentTimeSlot.getTime() + gap * 60000);
 
             let isConflict = false;
