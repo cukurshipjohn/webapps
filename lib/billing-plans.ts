@@ -51,8 +51,9 @@ export const PLANS = {
     kasirEnabled: false,
     maxKasirBarbers: 0,
     features: [
-      'Halaman booking pelanggan',
-      'Notifikasi WA otomatis',
+      'Halaman booking online (URL subdomain unik)',
+      'Notifikasi WA otomatis (konfirmasi booking)',
+      'Pengingat WA 1 jam sebelum jadwal',
       'Maksimal 2 kapster',
       '50 booking per bulan',
       'Panel admin lengkap',
@@ -78,12 +79,13 @@ export const PLANS = {
     maxKasirBarbers: 1,
     features: [
       'Semua fitur Starter',
-      'Home Service aktif',
+      'Kasir digital POS (web-based, pakai HP)',
+      'Bot Kasir Telegram (1 barber aktif)',
+      'Blast WA ke semua pelanggan',
+      'Home Service tidak terbatas',
       'Maksimal 5 kapster',
       'Booking tidak terbatas',
-      'Laporan pendapatan bulanan',
-      'Blast WA ke pelanggan',
-      'Kasir Telegram (1 barber)',
+      'Laporan omset harian & bulanan',
     ],
   },
   business: {
@@ -107,9 +109,11 @@ export const PLANS = {
     features: [
       'Semua fitur Pro',
       'Kapster tidak terbatas',
-      'WA session toko sendiri',
-      'Priority support',
-      'Kasir Telegram (unlimited barber)',
+      'Bot Kasir Telegram semua barber (unlimited)',
+      'AI NLP — barber cukup ketik nama layanan',
+      'Manajemen pengeluaran + approval owner',
+      'WA Session toko sendiri',
+      'Priority WA Support',
     ],
   },
 
@@ -134,9 +138,9 @@ export const PLANS = {
     maxKasirBarbers: 0,
     features: [
       'Semua fitur Starter Bulanan',
-      'Hemat 10% vs bulanan',
+      'Hemat 10% vs bulanan (harga terkunci 1 tahun)',
       'Custom subdomain (set 1x, tidak bisa diubah)',
-      'Harga terkunci 1 tahun',
+      'Pengingat WA 1 jam via VPS — 100% selalu jalan',
     ],
   },
   pro_annual: {
@@ -159,10 +163,10 @@ export const PLANS = {
     maxKasirBarbers: 1,
     features: [
       'Semua fitur Pro Bulanan',
-      'Hemat 20% vs bulanan',
+      'Hemat 20% vs bulanan (harga terkunci 1 tahun)',
       'Custom subdomain (1x revisi)',
-      'Harga terkunci 1 tahun',
-      'Kasir Telegram (1 barber)',
+      'Bot Kasir Telegram (1 barber aktif)',
+      'Laporan omset harian & bulanan',
     ],
   },
   business_annual: {
@@ -185,11 +189,12 @@ export const PLANS = {
     maxKasirBarbers: null as null,
     features: [
       'Semua fitur Business Bulanan',
-      'Hemat 25% vs bulanan',
+      'Hemat 25% vs bulanan (harga terkunci 1 tahun)',
       'Custom subdomain (3x revisi)',
-      'Harga terkunci 1 tahun',
-      'Priority support',
-      'Kasir Telegram (unlimited barber)',
+      'Bot Kasir Telegram semua barber (unlimited)',
+      'AI NLP — barber cukup ketik nama layanan',
+      'Manajemen pengeluaran + approval owner',
+      'Priority WA Support',
     ],
   },
 } as const;

@@ -9,41 +9,39 @@ const PLANS = [
     {
         key: "starter", name: "Starter", promo_price: 49000, normal_price: 79000, price_annual: 852000, max_barbers: 2, max_bookings: 50,
         features: [
+            "Halaman booking online (URL subdomain sendiri)",
             "Maks. 2 kapster",
-            "Maks. 50 booking/bulan",
-            "Home Service maks. 5x/bulan",
-            "Notifikasi WhatsApp",
-            "Panel Admin lengkap",
-            "URL barbershop sendiri",
+            "50 booking per bulan",
+            "Notifikasi WA otomatis (konfirmasi booking)",
+            "Pengingat WA otomatis 1 jam sebelum jadwal",
+            "Panel admin lengkap",
         ],
         popular: false,
     },
     {
         key: "pro", name: "Pro", promo_price: 99000, normal_price: 149000, price_annual: 1430400, max_barbers: 5, max_bookings: 9999,
         features: [
+            "Semua fitur Starter",
             "Maks. 5 kapster",
             "Booking tidak terbatas",
+            "Kasir digital POS (web-based, pakai HP)",
+            "Bot Kasir Telegram (1 barber)",
+            "Blast WA ke semua pelanggan",
+            "Laporan omset harian & bulanan",
             "Home Service tidak terbatas",
-            "Blast Notifikasi WA ke pelanggan",
-            "Notifikasi WhatsApp",
-            "Panel Admin lengkap",
-            "URL barbershop sendiri",
-            "Laporan bulanan",
         ],
         popular: true,
     },
     {
         key: "business", name: "Business", promo_price: 199000, normal_price: 299000, price_annual: 2691000, max_barbers: 9999, max_bookings: 9999,
         features: [
+            "Semua fitur Pro",
             "Kapster tidak terbatas",
-            "Booking tidak terbatas",
-            "Home Service tidak terbatas",
-            "Blast Notifikasi WA ke pelanggan",
-            "WA Priority Support",
-            "Panel Admin lengkap",
-            "URL barbershop sendiri",
-            "Laporan bulanan & tahunan",
-            "Support prioritas",
+            "Bot Kasir Telegram semua barber (unlimited)",
+            "AI NLP — barber cukup ketik nama layanan",
+            "Manajemen pengeluaran + approval owner",
+            "WA Session toko sendiri",
+            "Priority WA Support",
         ],
         popular: false,
     },
@@ -51,12 +49,14 @@ const PLANS = [
 
 
 const FEATURES = [
-    { icon: "📱", title: "Booking Online 24/7", desc: "Pelanggan bisa booking kapan saja lewat link khusus barbershop Anda, tanpa perlu install aplikasi." },
-    { icon: "💈", title: "Manajemen Kapster", desc: "Atur jadwal, layanan, dan foto setiap kapster dengan mudah dari panel admin." },
-    { icon: "📅", title: "Kelola Jadwal Real-time", desc: "Monitor semua booking hari ini, minggu ini, dan bulan ini dalam satu dashboard." },
-    { icon: "💬", title: "Notifikasi WhatsApp", desc: "Pelanggan dan kapster otomatis dapat notifikasi booking via WhatsApp tanpa biaya tambahan." },
-    { icon: "🔗", title: "URL Subdomain Sendiri", desc: "Setiap barbershop mendapat URL unik seperti johncukur.cukurship.id — terlihat profesional." },
-    { icon: "📊", title: "Laporan & Statistik", desc: "Pantau revenue, booking per kapster, dan performa toko dari satu tempat." },
+    { icon: "📱", title: "Booking Online 24/7", desc: "Pelanggan booking kapan saja lewat link unik barbershop Anda — tanpa telepon, tanpa antri, tanpa install aplikasi." },
+    { icon: "🔔", title: "WA Otomatis — 0 Kerja Manual", desc: "Konfirmasi booking, pengingat 1 jam sebelum jadwal, dan notifikasi selesai/batal otomatis ke pelanggan, barber & owner." },
+    { icon: "🖥️", title: "Kasir Digital di HP", desc: "POS berbasis web — proses transaksi, pilih metode bayar Cash/QRIS/Transfer, dan struk digital otomatis. Tidak perlu mesin kasir." },
+    { icon: "🤖", title: "Bot Kasir Telegram + AI", desc: "Barber cukup ketik nama layanan di Telegram — AI Google Gemini langsung memahami dan memasukkan ke keranjang. No form, no klik." },
+    { icon: "💈", title: "Manajemen Barber Lengkap", desc: "Atur jadwal libur, pantau performa per barber, kelola akun Telegram mereka — semua dari satu dashboard admin." },
+    { icon: "📊", title: "Laporan Bisnis Real-time", desc: "Pantau omset hari ini, transaksi per barber, dan riwayat pengeluaran dari mana saja — tidak perlu buka buku kas lagi." },
+    { icon: "🔗", title: "URL Subdomain Profesional", desc: "Setiap barbershop mendapat URL unik seperti johncukur.cukurship.id — terlihat profesional tanpa perlu beli domain atau server." },
+    { icon: "💰", title: "Kelola Pengeluaran Toko", desc: "Barber ajukan pengeluaran + foto struk dari HP, owner approve dari dashboard. Tidak ada biaya operasional yang tersembunyi lagi." },
 ];
 
 function formatRupiah(n: number) {
@@ -147,8 +147,9 @@ export default function LandingPage() {
                     </h1>
 
                     <p className="text-xl text-neutral-400 max-w-2xl mx-auto leading-relaxed">
-                        Siapkan sistem booking online untuk barbershop Anda dalam <strong className="text-white">5 menit</strong> — tanpa coding,
-                        tanpa repot. URL sendiri, notifikasi WhatsApp otomatis, dan panel admin lengkap.
+                        Siapkan sistem booking online, kasir digital, dan WA otomatis untuk barbershop Anda dalam{" "}
+                        <strong className="text-white">5 menit</strong> — tanpa coding, tanpa repot.
+                        URL sendiri, notifikasi otomatis, dan bot Telegram AI siap pakai.
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -199,14 +200,43 @@ export default function LandingPage() {
                 </div>
             </section>
 
+            {/* ── PAIN POINTS → SOLUSI ──────────────────── */}
+            <section className="py-20 px-6 bg-neutral-900/40">
+                <div className="max-w-5xl mx-auto">
+                    <div className="text-center mb-12">
+                        <p className="text-amber-400 text-sm font-bold uppercase tracking-widest mb-3">Kenali Masalahnya</p>
+                        <h2 className="text-3xl md:text-4xl font-extrabold text-white">Barbershop Kamu Punya Masalah Ini?</h2>
+                        <p className="text-neutral-400 mt-3 max-w-xl mx-auto">CukurShip hadir untuk menyelesaikan masalah nyata yang dihadapi setiap hari.</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {[
+                            { pain: "📲 Booking via WA manual, sering lupa & double-booking", fix: "Booking online 24/7 — pelanggan pesan sendiri, semua tercatat otomatis." },
+                            { pain: "😫 Pelanggan lupa jadwal & tidak datang", fix: "WA pengingat otomatis 1 jam sebelum jadwal — tanpa diketik manual." },
+                            { pain: "📓 Kasir masih pakai buku / Excel", fix: "Kasir digital via HP atau Telegram — transaksi tercatat, struk digital otomatis." },
+                            { pain: "🔍 Tidak tahu omset & pemasukan hari ini", fix: "Dashboard real-time — cek omset, jumlah pelanggan, dan pengeluaran kapan saja." },
+                            { pain: "👤 Barber catat manual, pendapatan bisa bocor", fix: "Semua transaksi tercatat di sistem — tidak bisa dihapus atau disembunyikan." },
+                            { pain: "🌐 Tidak punya website atau toko online", fix: "Subdomain toko siap dalam menit — johncukur.cukurship.id langsung aktif." },
+                        ].map((item, i) => (
+                            <div key={i} className="flex gap-4 p-5 rounded-2xl border border-neutral-800 bg-neutral-900/60 hover:border-amber-500/20 transition-colors group">
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-semibold text-neutral-500 mb-2 line-through decoration-red-500/50">{item.pain}</p>
+                                    <p className="text-sm text-white font-medium">✅ {item.fix}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
             {/* ── FEATURES ──────────────────────────────────────────── */}
             <section id="features" className="py-24 px-6">
                 <div className="max-w-6xl mx-auto">
                     <div className="text-center mb-14">
                         <p className="text-amber-400 text-sm font-bold uppercase tracking-widest mb-3">Fitur Unggulan</p>
-                        <h2 className="text-4xl font-extrabold text-white">Semua yang Dibutuhkan Barbershop Modern</h2>
+                        <h2 className="text-4xl font-extrabold text-white">Solusi Lengkap untuk Barbershop Anda</h2>
+                        <p className="text-neutral-400 mt-3 max-w-xl mx-auto">Satu platform, semua beres — dari booking, kasir, WA, sampai laporan bisnis.</p>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
                         {FEATURES.map((f, i) => (
                             <div key={i}
                                 className="group bg-neutral-900/60 border border-neutral-800 hover:border-amber-500/30 rounded-2xl p-6 space-y-3 transition-all duration-300 hover:bg-neutral-900">
@@ -221,7 +251,24 @@ export default function LandingPage() {
                 </div>
             </section>
 
-            {/* ── PRICING ───────────────────────────────────────────── */}
+            {/* ── SOCIAL PROOF STATS BAR ───────────────────── */}
+            <section className="py-12 px-6 border-y border-neutral-800/50">
+                <div className="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+                    {[
+                        { num: "100+", label: "Barbershop Aktif" },
+                        { num: "24/7", label: "Booking Online" },
+                        { num: "0 Manual", label: "Notifikasi WA" },
+                        { num: "5 Menit", label: "Setup Selesai" },
+                    ].map((s, i) => (
+                        <div key={i}>
+                            <p className="text-3xl font-black text-amber-400">{s.num}</p>
+                            <p className="text-sm text-neutral-400 mt-1">{s.label}</p>
+                        </div>
+                    ))}
+                </div>
+            </section>
+
+            {/* ── PRICING ──────────────────────────────── */}
             <section id="pricing" className="py-24 px-6 relative">
                 <div className="absolute inset-0 pointer-events-none">
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[300px] bg-amber-500/4 rounded-full blur-[100px]" />
