@@ -100,6 +100,7 @@ export async function GET(request: NextRequest) {
             .select('id, name, price, duration_minutes, service_type')
             .eq('tenant_id', tenantId)
             .in('service_type', serviceTypeFilter)
+            .eq('is_active', true)          // ← hanya layanan aktif yang tampil ke pelanggan
             .order('service_type', { ascending: true })
             .order('price', { ascending: true });
 

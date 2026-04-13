@@ -94,7 +94,9 @@ export async function PATCH(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// DELETE /api/admin/services/[id] — Soft delete (set is_active = false)
+// DELETE /api/admin/services/[id] — Hard delete layanan
+// FK bookings.service_id → SET NULL (riwayat booking tetap aman)
+// FK service_barber_pricing.service_id → CASCADE (otomatis dibersihkan)
 // ═══════════════════════════════════════════════════════════════
 export async function DELETE(
     request: NextRequest,
@@ -120,27 +122,19 @@ export async function DELETE(
             return NextResponse.json({ error: 'Layanan tidak ditemukan atau Anda tidak memiliki akses.' }, { status: 404 });
         }
 
-        // ── Log: Cek apakah ada service_barber_pricing yang terkait ──
-        const { count: pricingCount } = await supabaseAdmin
-            .from('service_barber_pricing')
-            .select('*', { count: 'exact', head: true })
-            .eq('service_id', serviceId);
-
-        if (typeof pricingCount === 'number' && pricingCount > 0) {
-            console.log(`[SERVICES DELETE] Soft-deleting service "${existing.name}" (${serviceId}). ${pricingCount} barber pricing record(s) exist — will remain but service is now inactive.`);
-        }
-
-        // ── Soft delete: set is_active = false ──
+        // ── Hard delete — FK constraints handle cleanup automatically:
+        //    bookings.service_id → SET NULL   (riwayat booking tetap ada)
+        //    service_barber_pricing → CASCADE  (data pricing barber ikut terhapus)
         const { error } = await supabaseAdmin
             .from('services')
-            .update({ is_active: false })
+            .delete()
             .eq('id', serviceId)
             .eq('tenant_id', user.tenant_id);
 
         if (error) throw error;
 
         return NextResponse.json({
-            message: `Layanan "${existing.name}" berhasil dinonaktifkan`,
+            message: `Layanan "${existing.name}" berhasil dihapus`,
             service_id: serviceId
         });
     } catch (error: any) {

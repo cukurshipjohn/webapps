@@ -38,14 +38,13 @@ export async function GET(request: NextRequest) {
 
         if (typeParam === SERVICE_TYPES.POS_KASIR) {
             // Explicit POS kasir request — admin only view
-            query = query.eq('service_type', SERVICE_TYPES.POS_KASIR);
+            query = query.eq('service_type', SERVICE_TYPES.POS_KASIR).eq('is_active', true);
         } else if (typeParam === SERVICE_TYPES.BARBERSHOP || typeParam === SERVICE_TYPES.HOME_SERVICE) {
             // Specific booking type filter
-            query = query.eq('service_type', typeParam);
+            query = query.eq('service_type', typeParam).eq('is_active', true);
         } else {
-            // Default: return barbershop + home_service, NEVER pos_kasir
-            // SECURITY: pos_kasir services hanya muncul jika diminta eksplisit
-            query = query.in('service_type', BOOKING_SERVICE_TYPES);
+            // Default: return barbershop + home_service active only, NEVER pos_kasir
+            query = query.in('service_type', BOOKING_SERVICE_TYPES).eq('is_active', true);
         }
 
         const { data, error } = await query;

@@ -206,12 +206,12 @@ export default function AdminServicesPage() {
   };
 
   const handleDeactivate = async (service: Service) => {
-    if (!confirm(`Nonaktifkan layanan "${service.name}"?\nLayanan tidak akan muncul di booking & kasir.`)) return;
+    if (!confirm(`Hapus layanan "${service.name}" secara permanen?\n\nRiwayat booking yang sudah ada tetap tersimpan.`)) return;
     try {
       const res = await fetch(`/api/admin/services/${service.id}`, { method: "DELETE" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Gagal menonaktifkan");
-      showToast(data.message || "Layanan dinonaktifkan", "success");
+      if (!res.ok) throw new Error(data.error || "Gagal menghapus layanan");
+      showToast(data.message || "Layanan berhasil dihapus", "success");
       fetchAll();
     } catch (err: any) {
       showToast(err.message, "error");
@@ -597,14 +597,11 @@ function ServiceRow({
   };
 
   return (
-    <div className={`glass p-4 rounded-2xl border border-neutral-800/50 flex flex-col sm:flex-row sm:items-center gap-4 group transition-all ${!service.is_active ? "opacity-50" : ""}`}>
+    <div className="glass p-4 rounded-2xl border border-neutral-800/50 flex flex-col sm:flex-row sm:items-center gap-4 group transition-all">
       {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <h3 className="text-sm font-bold text-white truncate">{service.name}</h3>
-          {!service.is_active && (
-            <span className="text-[9px] bg-red-500/10 text-red-400 px-1.5 py-0.5 rounded font-medium shrink-0">Nonaktif</span>
-          )}
         </div>
         <div className="flex items-center gap-3 text-xs text-neutral-500">
           {isKasir && <span className="bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-400">{priceTypeLabel()}</span>}
@@ -623,11 +620,9 @@ function ServiceRow({
             ⚙️ Barber
           </button>
         )}
-        {service.is_active && (
-          <button onClick={onDeactivate} className="px-3 py-2 text-xs bg-neutral-900/80 hover:bg-red-500/10 text-neutral-400 hover:text-red-400 rounded-lg transition-colors border border-neutral-700 hover:border-red-500/30">
-            🚫
-          </button>
-        )}
+        <button onClick={onDeactivate} className="px-3 py-2 text-xs bg-neutral-900/80 hover:bg-red-500/10 text-neutral-400 hover:text-red-400 rounded-lg transition-colors border border-neutral-700 hover:border-red-500/30" title="Hapus layanan">
+          🗑️
+        </button>
       </div>
     </div>
   );
