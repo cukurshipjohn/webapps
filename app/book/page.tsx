@@ -27,7 +27,7 @@ export default function BookAppointmentPage() {
   const [fetchError, setFetchError] = useState("");
   const [success, setSuccess] = useState(false);
   // Jam operasional toko — diisi dari /api/store/info agar label slot sesuai pengaturan tenant
-  const [storeHours, setStoreHours] = useState<{ open: string; close: string }>({ open: '10:00', close: '20:00' });
+  const [storeHours, setStoreHours] = useState<{ open: string; close: string; timezone: string; timezoneLabel: string }>({ open: '10:00', close: '20:00', timezone: 'Asia/Jakarta', timezoneLabel: 'WIB' });
 
   // Fetch barbers on mount
   useEffect(() => {
@@ -52,13 +52,13 @@ export default function BookAppointmentPage() {
           }
           link.href = data.logo_url;
         }
-        // Ambil jam operasional toko untuk label slot — default 10:00/20:00 jika null
-        if (data.operating_open || data.operating_close) {
-          setStoreHours({
-            open:  data.operating_open  ?? '10:00',
-            close: data.operating_close ?? '20:00',
-          });
-        }
+        // Ambil jam & timezone operasional toko untuk slot
+        setStoreHours({
+          open:  data.operating_open  ?? '10:00',
+          close: data.operating_close ?? '20:00',
+          timezone: data.timezone ?? 'Asia/Jakarta',
+          timezoneLabel: data.timezone_label ?? 'WIB'
+        });
       })
       .catch(() => {});
   }, []);
@@ -309,10 +309,10 @@ export default function BookAppointmentPage() {
                 <p className="text-neutral-500 text-sm">🔍 Mengecek ketersediaan slot...</p>
               ) : availableSlots.length > 0 ? (
                 <div>
-                  <p className="text-xs text-neutral-500 mb-3">Jam kerja: {storeHours.open} – {storeHours.close} WIB</p>
+                  <p className="text-xs text-neutral-500 mb-3">Jam kerja: {storeHours.open} – {storeHours.close} {storeHours.timezoneLabel}</p>
                   <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
                     {availableSlots.map((slot, i) => {
-                      const time = new Date(slot).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" });
+                      const time = new Date(slot).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: storeHours.timezone });
                       return (
                         <button key={i} type="button" onClick={() => setSelectedSlot(slot)}
                           className={`py-2 text-sm rounded-lg border transition-all ${selectedSlot === slot ? "bg-primary text-background border-primary font-bold" : "bg-neutral-900 border-neutral-800 hover:border-primary/50 text-neutral-300 hover:text-primary-hover"}`}>
@@ -348,7 +348,7 @@ export default function BookAppointmentPage() {
                 <div className="flex justify-between">
                   <span className="text-neutral-400">Waktu</span>
                   <span className="font-medium">
-                    {new Date(selectedSlot).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" })}
+                    {new Date(selectedSlot).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: storeHours.timezone })} {storeHours.timezoneLabel}
                   </span>
                 </div>
                 <div className="flex justify-between border-t border-primary/20 pt-2 mt-2">

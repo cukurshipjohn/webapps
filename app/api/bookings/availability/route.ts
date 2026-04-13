@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase';
 import { getTenantFromRequest } from '../../../../lib/tenant-context';
+import { getTimezoneOffset } from '../../../../lib/timezone';
 
 const DURATION_HOME_SERVICE = 45; // minutes
 const DURATION_BARBERSHOP = 30; // minutes
@@ -16,9 +17,6 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-        const startOfDayWIB = new Date(`${date}T00:00:00+07:00`);
-        const endOfDayWIB = new Date(`${date}T23:59:59+07:00`);
-
         // Ambil tenant dari header dulu (dari middleware), fallback ke lookup barber
         const { tenantId: headerTenantId } = getTenantFromRequest(request);
         let tenantId = headerTenantId;
@@ -36,6 +34,20 @@ export async function GET(request: NextRequest) {
             tenantId = barberData.tenant_id;
         }
 
+        // 1b. Dapatkan timezone tenant secara absolut
+        const { data: tenantData } = await supabaseAdmin
+            .from('tenants')
+            .select('timezone')
+            .eq('id', tenantId)
+            .single();
+        
+        const tenantTz = tenantData?.timezone ?? 'Asia/Jakarta';
+        const tzOffset = getTimezoneOffset(tenantTz); // Output contoh: "+07:00", "+08:00"
+
+        // Kalkulasi boundary hari sesuai offset tenant asli 
+        const startOfDayLocal = new Date(`${date}T00:00:00${tzOffset}`);
+        const endOfDayLocal = new Date(`${date}T23:59:59${tzOffset}`);
+
         // 2. BACA JAM OPERASIONAL TOKO DARI tenant_settings (sebagai default)
         // Jika tidak ada record, gunakan default 10:00 – 20:00
         const { data: tenantSettings } = await supabaseAdmin
@@ -50,8 +62,8 @@ export async function GET(request: NextRequest) {
 
         // 2b. OVERRIDE JAM BERDASARKAN JADWAL KAPSTER (barber_schedule)
         // Priority: jadwal kapster > jam toko > default sistem
-        // Hari dihitung dengan WIB (UTC+7) agar sesuai waktu lokal Indonesia
-        const dayOfWeek = new Date(`${date}T12:00:00+07:00`).getDay(); // 0=Minggu, 1=Senin … 6=Sabtu
+        // Hari dihitung dengan timezone offset tenant
+        const dayOfWeek = new Date(`${date}T12:00:00${tzOffset}`).getDay(); // 0=Minggu, 1=Senin … 6=Sabtu
 
         const { data: barberSchedule } = await supabaseAdmin
             .from('barber_schedule')
@@ -100,8 +112,8 @@ export async function GET(request: NextRequest) {
             .from('bookings')
             .select('start_time, end_time')
             .eq('barber_id', barberId)
-            .gte('start_time', startOfDayWIB.toISOString())
-            .lt('start_time', endOfDayWIB.toISOString());
+            .gte('start_time', startOfDayLocal.toISOString())
+            .lt('start_time', endOfDayLocal.toISOString());
 
         if (error) throw error;
 
@@ -116,14 +128,14 @@ export async function GET(request: NextRequest) {
         // Buat slot berdasarkan jam efektif kapster:
         //   - Jika kapster punya jadwal kustom (barber_schedule) → pakai openStr/closeStr kapster
         //   - Jika tidak ada jadwal kustom               → pakai openStr/closeStr toko
-        // Format ISO dengan offset +07:00 agar tidak terpengaruh timezone server
-        const openTimeWIB  = new Date(`${date}T${openStr}:00+07:00`);
-        const closeTimeWIB = new Date(`${date}T${closeStr}:00+07:00`);
+        // Format ISO menggunakan perhitungan offset khusus dari store tenant
+        const openTimeLocal  = new Date(`${date}T${openStr}:00${tzOffset}`);
+        const closeTimeLocal = new Date(`${date}T${closeStr}:00${tzOffset}`);
 
-        let currentTimeSlot = new Date(openTimeWIB);
+        let currentTimeSlot = new Date(openTimeLocal);
 
         // Slot hanya dibuat jika waktu SELESAI-nya tidak melampaui jam tutup
-        while (currentTimeSlot.getTime() + gap * 60000 <= closeTimeWIB.getTime()) {
+        while (currentTimeSlot.getTime() + gap * 60000 <= closeTimeLocal.getTime()) {
             const slotEnd = new Date(currentTimeSlot.getTime() + gap * 60000);
 
             let isConflict = false;
