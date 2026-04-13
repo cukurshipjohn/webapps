@@ -47,6 +47,8 @@ interface ShopInfo {
   operating_close: string | null;
   is_home_service_enabled: boolean;
   slug: string | null;
+  timezone?: string;
+  timezone_label?: string;
   barbers: Barber[];
   services: Service[];
 }
@@ -60,20 +62,26 @@ function toMinutes(hhmm: string | null): number | null {
   return h * 60 + m;
 }
 
-function nowWIBMinutes(): number {
+function getCurrentTenantMinutes(timezone: string): number {
+  const offsetMap: Record<string, number> = {
+    'Asia/Jakarta': 7,
+    'Asia/Makassar': 8,
+    'Asia/Jayapura': 9,
+  };
+  const offsetHours = offsetMap[timezone] ?? 7;
   const d = new Date();
   const utc = d.getUTCHours() * 60 + d.getUTCMinutes();
-  return (utc + 7 * 60) % (24 * 60);
+  return (utc + offsetHours * 60) % (24 * 60);
 }
 
-function OpenStatus({ open, close }: { open: string | null; close: string | null }) {
+function OpenStatus({ open, close, timezone, timezoneLabel }: { open: string | null; close: string | null; timezone: string; timezoneLabel: string }) {
   const isOpen = useMemo(() => {
     const o = toMinutes(open);
     const c = toMinutes(close);
     if (o === null || c === null) return null;
-    const now = nowWIBMinutes();
+    const now = getCurrentTenantMinutes(timezone);
     return now >= o && now < c;
-  }, [open, close]);
+  }, [open, close, timezone]);
 
   if (!open || !close) return null;
 
@@ -84,7 +92,7 @@ function OpenStatus({ open, close }: { open: string | null; close: string | null
         : "bg-red-500/10 border-red-500/30 text-red-400"
       }`}>
       <span className={`w-2 h-2 rounded-full ${isOpen ? "bg-green-400 animate-pulse" : "bg-red-400"}`} />
-      {isOpen ? `Sedang Buka · ${open}–${close} WIB` : `Sedang Tutup · Buka ${open} WIB`}
+      {isOpen ? `Sedang Buka · ${open}–${close} ${timezoneLabel}` : `Sedang Tutup · Buka ${open} ${timezoneLabel}`}
     </div>
   );
 }
@@ -115,7 +123,15 @@ export default function DashboardPage() {
     // 1A. Fetch shop info (selalu jalan meskipun belum login)
     fetch("/api/store/info")
       .then(r => r.json())
-      .then(data => { if (data.shop_name) setShop(data); })
+      .then(data => { 
+        if (data.shop_name) {
+          setShop({
+            ...data,
+            timezone: data.timezone || 'Asia/Jakarta',
+            timezone_label: data.timezone_label || 'WIB'
+          });
+        } 
+      })
       .catch(() => {})
       .finally(() => setLoadingShop(false));
 
@@ -404,7 +420,12 @@ export default function DashboardPage() {
                   <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight" style={{ color: accent }}>{shop?.shop_name || "Barbershop"}</h1>
                   <p className="mt-2 text-sm sm:text-base leading-relaxed" style={{ color: `${accent}90` }}>{shop?.shop_tagline || "Tampil Kece, Harga Terjangkau"}</p>
                 </div>
-                <OpenStatus open={shop?.operating_open ?? null} close={shop?.operating_close ?? null} />
+                <OpenStatus 
+                  open={shop?.operating_open ?? null} 
+                  close={shop?.operating_close ?? null} 
+                  timezone={shop?.timezone ?? 'Asia/Jakarta'}
+                  timezoneLabel={shop?.timezone_label ?? 'WIB'}
+                />
               </div>
             </section>
 

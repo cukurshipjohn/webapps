@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getTenantFromRequest } from '@/lib/tenant-context';
 import { getUserFromToken } from '@/lib/auth';
 import { BOOKING_SERVICE_TYPES } from '@/lib/service-types';
+import { getTimezoneLabel } from '@/lib/timezone';
 
 // Public endpoint — no auth required, readable by anyone visiting the tenant subdomain
 export const dynamic = 'force-dynamic';
@@ -70,12 +71,14 @@ export async function GET(request: NextRequest) {
             .eq('tenant_id', tenantId)
             .single();
 
-        // Fallback to tenants table for shop_name & slug
+        // Fallback to tenants table for shop_name & slug & fetch timezone
         const { data: tenant } = await supabaseAdmin
             .from('tenants')
-            .select('shop_name, slug')
+            .select('shop_name, slug, timezone')
             .eq('id', tenantId)
             .single();
+
+        const tz = tenant?.timezone ?? 'Asia/Jakarta';
 
         // Fetch active barbers (public info: name + specialty + photo)
         const { data: barbers } = await supabaseAdmin
@@ -124,8 +127,10 @@ export async function GET(request: NextRequest) {
             operating_open:           formatTime(settings?.operating_open  ?? null),
             operating_close:          formatTime(settings?.operating_close ?? null),
             is_home_service_enabled:  settings?.is_home_service_enabled ?? true,
-            // Slug, Barbers & Services
+            // Slug, Timezone, Barbers & Services
             slug:    tenant?.slug || null,
+            timezone: tz,
+            timezone_label: getTimezoneLabel(tz),
             barbers: barbers || [],
             services: services || [],
         });
