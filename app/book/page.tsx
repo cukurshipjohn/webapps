@@ -3,14 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-// Harga Home Service
-const HOME_PRICING = [
-  { label: "1 Orang", price: 35000, people: 1, duration: 45 },
-  { label: "2 Orang", price: 50000, people: 2, duration: 60 },
-  { label: "3 Orang", price: 60000, people: 3, duration: 75 },
-  { label: "5+ Orang", price: 75000, people: 5, duration: 90 },
-];
-
 function formatRupiah(amount: number) {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(amount);
 }
@@ -24,9 +16,6 @@ export default function BookAppointmentPage() {
   const [selectedService, setSelectedService] = useState("");
   const [serviceType, setServiceType] = useState("barbershop");
   const [date, setDate] = useState("");
-
-  // Home service specific
-  const [selectedHomePricing, setSelectedHomePricing] = useState<typeof HOME_PRICING[0] | null>(null);
 
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [selectedSlot, setSelectedSlot] = useState("");
@@ -74,20 +63,19 @@ export default function BookAppointmentPage() {
       .catch(() => {});
   }, []);
 
-  // Fetch services ketika serviceType berubah
+  // Fetch services ketika serviceType berubah — barbershop & home sama-sama dari DB per tenant
+  // Ini memastikan setiap tenant hanya melihat layanan milik mereka sendiri.
   useEffect(() => {
     setSelectedService("");
-    setSelectedHomePricing(null);
-    if (serviceType === "barbershop") {
-      fetch("/api/services?type=barbershop")
-        .then(res => res.json())
-        .then(data => {
-          setServices(Array.isArray(data) ? data : []);
-          if (!Array.isArray(data)) setFetchError(data?.message || "Gagal memuat layanan.");
-        })
-        .catch(() => setFetchError("Tidak dapat memuat layanan."));
-    }
-    // Untuk home, kita pakai HOME_PRICING yang sudah ada di client (tidak perlu fetch lagi)
+    setServices([]);
+    const typeParam = serviceType === "barbershop" ? "barbershop" : "home";
+    fetch(`/api/services?type=${typeParam}`)
+      .then(res => res.json())
+      .then(data => {
+        setServices(Array.isArray(data) ? data : []);
+        if (!Array.isArray(data)) setFetchError(data?.message || "Gagal memuat layanan.");
+      })
+      .catch(() => setFetchError("Tidak dapat memuat layanan."));
   }, [serviceType]);
 
   // Fetch available slots
@@ -112,12 +100,8 @@ export default function BookAppointmentPage() {
       return;
     }
 
-    // Validasi: untuk home service harus pilih tier harga; untuk barbershop harus pilih service
-    if (serviceType === "home" && !selectedHomePricing) {
-      setError("Pilih jumlah orang untuk layanan Home Service.");
-      return;
-    }
-    if (serviceType === "barbershop" && !selectedService) {
+    // Validasi: service harus dipilih untuk semua tipe
+    if (!selectedService) {
       setError("Pilih layanan terlebih dahulu.");
       return;
     }
@@ -130,21 +114,8 @@ export default function BookAppointmentPage() {
       return;
     }
 
-    // Untuk Home Service, cari service ID yang sesuai dari DB berdasarkan jumlah orang
-    let serviceIdToSend = selectedService;
-    if (serviceType === "home" && selectedHomePricing) {
-      // Cari service di DB yang namanya cocok
-      const homeServices = await fetch("/api/services?type=home").then(r => r.json());
-      const matchedService = homeServices.find((s: any) =>
-        s.name.toLowerCase().includes(selectedHomePricing.label.toLowerCase())
-      );
-      if (matchedService) {
-        serviceIdToSend = matchedService.id;
-      } else {
-        setError("Gagal menemukan data layanan home service. Coba refresh halaman.");
-        return;
-      }
-    }
+    // serviceId langsung dari state — sudah benar per tenant sejak fetch awal
+    const serviceIdToSend = selectedService;
 
     setLoading(true);
     try {
@@ -179,10 +150,8 @@ export default function BookAppointmentPage() {
     }
   };
 
-  // Hitung harga yang akan ditampilkan
-  const selectedServicePrice = serviceType === "home"
-    ? selectedHomePricing?.price
-    : services.find(s => s.id === selectedService)?.price;
+  // Hitung harga yang akan ditampilkan — uniform untuk barbershop & home
+  const selectedServicePrice = services.find(s => s.id === selectedService)?.price;
 
   if (success) {
     return (
@@ -249,51 +218,36 @@ export default function BookAppointmentPage() {
               2. Pilih Layanan {serviceType === "home" ? "Home Service" : "Barbershop"}
             </h2>
 
-            {/* Barbershop: dropdown */}
-            {serviceType === "barbershop" && (
-              <div className="space-y-3">
-                {services.length === 0 ? (
-                  <p className="text-neutral-500 text-sm">Memuat layanan...</p>
-                ) : (
-                  services.map(s => {
-                    const displayName = s.name.replace("BARBER | ", "");
-                    return (
-                      <button type="button" key={s.id} onClick={() => setSelectedService(s.id)}
-                        className={`w-full flex justify-between items-center p-4 rounded-xl border text-sm font-medium transition-all ${selectedService === s.id ? "bg-primary/10 border-primary text-primary-hover" : "bg-neutral-900/50 border-neutral-800 text-neutral-300 hover:border-primary/40"}`}>
-                        <span className="flex items-center gap-3">
-                          <span className="text-xl">✂️</span>
-                          <span className="font-semibold">{displayName}</span>
-                        </span>
-                        <span className="font-bold text-base">{formatRupiah(s.price)}</span>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-            )}
-
-            {/* Home Service: kartu harga paket */}
+            {/* Info banner untuk home service */}
             {serviceType === "home" && (
-              <div className="space-y-3">
-                {/* Info banner */}
-                <div className="bg-blue-500/10 border border-blue-500/20 text-blue-300 px-4 py-2 rounded-lg text-xs">
-                  💡 Harga paket sudah termasuk biaya perjalanan barber ke rumah Anda.
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  {HOME_PRICING.map((tier) => (
-                    <button type="button" key={tier.people} onClick={() => setSelectedHomePricing(tier)}
-                      className={`p-4 rounded-xl border text-left transition-all ${selectedHomePricing?.people === tier.people ? "bg-primary/10 border-primary" : "bg-neutral-900/50 border-neutral-800 hover:border-primary/40"}`}>
-                      <p className="text-xs text-neutral-500 uppercase tracking-wider font-semibold mb-1">👥 {tier.label}</p>
-                      <p className={`text-xl font-bold ${selectedHomePricing?.people === tier.people ? "text-primary-hover" : "text-white"}`}>
-                        {formatRupiah(tier.price)}
-                      </p>
-                      <p className="text-[10px] text-neutral-600 mt-1">± {tier.duration} menit</p>
-                    </button>
-                  ))}
-                </div>
+              <div className="bg-blue-500/10 border border-blue-500/20 text-blue-300 px-4 py-2 rounded-lg text-xs mb-3">
+                💡 Harga paket sudah termasuk biaya perjalanan barber ke rumah Anda.
               </div>
             )}
+
+            {/* Daftar layanan dari DB — berlaku untuk barbershop & home */}
+            <div className="space-y-3">
+              {services.length === 0 ? (
+                <p className="text-neutral-500 text-sm">
+                  {serviceType === "home" ? "Memuat layanan home service..." : "Memuat layanan..."}
+                </p>
+              ) : (
+                services.map(s => {
+                  const displayName = s.name.replace("BARBER | ", "");
+                  const icon = serviceType === "home" ? "🏠" : "✂️";
+                  return (
+                    <button type="button" key={s.id} onClick={() => setSelectedService(s.id)}
+                      className={`w-full flex justify-between items-center p-4 rounded-xl border text-sm font-medium transition-all ${selectedService === s.id ? "bg-primary/10 border-primary text-primary-hover" : "bg-neutral-900/50 border-neutral-800 text-neutral-300 hover:border-primary/40"}`}>
+                      <span className="flex items-center gap-3">
+                        <span className="text-xl">{icon}</span>
+                        <span className="font-semibold">{displayName}</span>
+                      </span>
+                      <span className="font-bold text-base">{formatRupiah(s.price)}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
           </div>
 
           {/* === STEP 3: Pilih Barber === */}
@@ -377,7 +331,7 @@ export default function BookAppointmentPage() {
           </div>
 
           {/* === RINGKASAN + TOMBOL === */}
-          {(selectedService || selectedHomePricing) && selectedBarber && selectedSlot && (
+          {selectedService && selectedBarber && selectedSlot && (
             <div className="glass p-5 rounded-2xl border border-primary/20 bg-primary/5">
               <h3 className="text-sm font-semibold text-primary mb-3">📋 Ringkasan Pesanan</h3>
               <div className="space-y-2 text-sm">
@@ -388,9 +342,7 @@ export default function BookAppointmentPage() {
                 <div className="flex justify-between">
                   <span className="text-neutral-400">Layanan</span>
                   <span className="font-medium">
-                    {serviceType === "home"
-                      ? `Home Service (${selectedHomePricing?.label})`
-                      : services.find(s => s.id === selectedService)?.name.replace("BARBER | ", "")}
+                    {services.find(s => s.id === selectedService)?.name.replace("BARBER | ", "")}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -415,7 +367,7 @@ export default function BookAppointmentPage() {
               className="w-full sm:w-auto px-8 py-4 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 font-medium rounded-xl transition-all border border-neutral-800">
               Batal
             </button>
-            <button type="submit" disabled={loading || !selectedSlot || (serviceType === "barbershop" ? !selectedService : !selectedHomePricing)}
+            <button type="submit" disabled={loading || !selectedSlot || !selectedService}
               className="flex-1 py-4 btn-primary text-background text-base font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed">
               {loading ? "Memproses..." : `✂️ Konfirmasi Booking${selectedServicePrice ? " — " + formatRupiah(selectedServicePrice) : ""}`}
             </button>
