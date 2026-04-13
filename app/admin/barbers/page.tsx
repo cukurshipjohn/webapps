@@ -18,6 +18,17 @@ export interface Barber {
   created_at: string;
 }
 
+interface BarberScheduleEntry {
+  id?: string;
+  day_of_week: number;
+  open_time: string;
+  close_time: string;
+  is_working: boolean;
+  mode: 'store' | 'custom' | 'off';
+}
+
+const DAY_NAMES = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
 export default function AdminBarbersPage() {
   const router = useRouter();
   const [barbers, setBarbers] = useState<Barber[]>([]);
@@ -48,6 +59,13 @@ export default function AdminBarbersPage() {
 
   // Role Toggle state
   const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  // Schedule Modal states
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [scheduleBarber, setScheduleBarber] = useState<Barber | null>(null);
+  const [scheduleData, setScheduleData] = useState<BarberScheduleEntry[]>([]);
+  const [scheduleLoading, setScheduleLoading] = useState(false);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
 
   useEffect(() => {
     fetchBarbers();
@@ -215,6 +233,95 @@ export default function AdminBarbersPage() {
       setLoadingId(null)
     }
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // SCHEDULE MODAL HANDLERS
+  // ═══════════════════════════════════════════════════════════
+
+  const openScheduleModal = async (barber: Barber) => {
+    setScheduleBarber(barber);
+    setScheduleLoading(true);
+    setScheduleModalOpen(true);
+    try {
+      const res = await fetch(`/api/admin/barbers/${barber.id}/schedule`);
+      const data = await res.json();
+      const dbEntries: Record<number, any> = {};
+      (data.schedule || []).forEach((e: any) => { dbEntries[e.day_of_week] = e; });
+      const entries: BarberScheduleEntry[] = Array.from({ length: 7 }, (_, idx) => {
+        const dbRow = dbEntries[idx];
+        if (!dbRow) return { day_of_week: idx, open_time: '09:00', close_time: '17:00', is_working: true, mode: 'store' as const };
+        if (!dbRow.is_working) return { ...dbRow, open_time: '09:00', close_time: '17:00', mode: 'off' as const };
+        return { ...dbRow, open_time: dbRow.open_time?.slice(0, 5) ?? '09:00', close_time: dbRow.close_time?.slice(0, 5) ?? '17:00', mode: 'custom' as const };
+      });
+      setScheduleData(entries);
+    } catch {
+      showToast('Gagal memuat jadwal', 'error');
+      setScheduleModalOpen(false);
+    } finally {
+      setScheduleLoading(false);
+    }
+  };
+
+  const updateScheduleEntry = (idx: number, patch: Partial<BarberScheduleEntry>) => {
+    setScheduleData(prev => prev.map((e, i) => i === idx ? { ...e, ...patch } : e));
+  };
+
+  const handleScheduleSave = async () => {
+    if (!scheduleBarber) return;
+    setScheduleSaving(true);
+    try {
+      const toSave = scheduleData.filter(e => e.mode !== 'store');
+      const toReset = scheduleData.filter(e => e.mode === 'store');
+      if (toSave.length > 0) {
+        const res = await fetch(`/api/admin/barbers/${scheduleBarber.id}/schedule`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            entries: toSave.map(e => ({
+              day_of_week: e.day_of_week,
+              open_time:   e.mode === 'off' ? '00:00' : e.open_time,
+              close_time:  e.mode === 'off' ? '00:01' : e.close_time,
+              is_working:  e.mode !== 'off',
+            })),
+          }),
+        });
+        if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Gagal menyimpan'); }
+      }
+      for (const e of toReset) {
+        if (e.id === undefined) continue;
+        await fetch(`/api/admin/barbers/${scheduleBarber.id}/schedule`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ day_of_week: e.day_of_week }),
+        });
+      }
+      showToast(`Jadwal ${scheduleBarber.name} berhasil disimpan`, 'success');
+      setScheduleModalOpen(false);
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
+
+  const handleScheduleReset = async () => {
+    if (!scheduleBarber) return;
+    if (!confirm(`Reset semua jadwal ${scheduleBarber.name}?\nKapster akan kembali mengikuti jam toko.`)) return;
+    setScheduleSaving(true);
+    try {
+      await fetch(`/api/admin/barbers/${scheduleBarber.id}/schedule`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ all: true }),
+      });
+      showToast(`Jadwal ${scheduleBarber.name} direset ke jam toko`, 'success');
+      setScheduleModalOpen(false);
+    } catch {
+      showToast('Gagal mereset jadwal', 'error');
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
 
   // ═══════════════════════════════════════════════════════════
   // TELEGRAM MODAL HANDLERS
@@ -474,6 +581,13 @@ export default function AdminBarbersPage() {
                       </div>
                     )}
                   </div>
+                  {/* ── Tombol Jadwal Kerja ── */}
+                  <button
+                    onClick={() => openScheduleModal(barber)}
+                    className="w-full mt-2 text-[11px] py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-lg transition-colors border border-indigo-500/20 hover:border-indigo-500/40 font-medium"
+                  >
+                    📅 Atur Jadwal Kerja
+                  </button>
                 </div>
               </div>
             ))}
@@ -714,6 +828,113 @@ export default function AdminBarbersPage() {
                   ) : "Ya, Putuskan"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ═══════════ Modal: Jadwal Kerja Kapster ═══════════ */}
+      {scheduleModalOpen && scheduleBarber && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => !scheduleSaving && setScheduleModalOpen(false)} />
+          <div className="relative z-10 w-full max-w-lg bg-neutral-950 border border-neutral-800 max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="p-6 border-b border-neutral-800/50">
+              <h2 className="text-xl font-bold">📅 Jadwal Kerja</h2>
+              <p className="text-sm text-neutral-400 mt-1">{scheduleBarber.name}</p>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-3">
+              {scheduleLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
+                </div>
+              ) : (
+                <>
+                  <p className="text-[11px] text-neutral-500 mb-4">
+                    💡 <strong className="text-neutral-400">Ikuti Jam Toko</strong> = tidak ada jadwal kustom, slot mengikuti jam operasional toko secara otomatis.
+                  </p>
+                  {scheduleData.map((entry, idx) => (
+                    <div key={idx} className="bg-neutral-900/50 rounded-2xl border border-neutral-800/50 p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-semibold text-white w-16">{DAY_NAMES[entry.day_of_week]}</span>
+                        <div className="flex gap-1.5">
+                          {(['store', 'custom', 'off'] as const).map(mode => (
+                            <button
+                              key={mode}
+                              onClick={() => updateScheduleEntry(idx, { mode })}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors ${
+                                entry.mode === mode
+                                  ? mode === 'off'    ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                    : mode === 'custom' ? 'bg-primary/20 text-primary border border-primary/30'
+                                    : 'bg-neutral-700 text-neutral-200 border border-neutral-600'
+                                  : 'bg-neutral-800/50 text-neutral-500 border border-neutral-700/50 hover:border-neutral-600'
+                              }`}
+                            >
+                              {mode === 'store' ? '🏪 Toko' : mode === 'custom' ? '⏰ Custom' : '🚫 Libur'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {entry.mode === 'custom' && (
+                        <div className="flex items-end gap-3 mt-1">
+                          <div className="flex-1">
+                            <label className="text-[10px] text-neutral-500 block mb-1">Jam Buka</label>
+                            <input
+                              type="time"
+                              value={entry.open_time}
+                              onChange={e => updateScheduleEntry(idx, { open_time: e.target.value })}
+                              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-primary transition-colors"
+                            />
+                          </div>
+                          <span className="text-neutral-600 pb-2">–</span>
+                          <div className="flex-1">
+                            <label className="text-[10px] text-neutral-500 block mb-1">Jam Tutup</label>
+                            <input
+                              type="time"
+                              value={entry.close_time}
+                              onChange={e => updateScheduleEntry(idx, { close_time: e.target.value })}
+                              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-primary transition-colors"
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {entry.mode === 'store' && <p className="text-[10px] text-neutral-600 mt-1">Mengikuti jam operasional toko</p>}
+                      {entry.mode === 'off'   && <p className="text-[10px] text-red-400/70 mt-1">Kapster tidak bekerja hari ini — tidak ada slot yang ditampilkan</p>}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 pt-0 flex flex-col gap-3">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setScheduleModalOpen(false)}
+                  disabled={scheduleSaving}
+                  className="flex-1 py-3 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 font-medium rounded-xl transition-all border border-neutral-800"
+                >
+                  Batal
+                </button>
+                <button
+                  onClick={handleScheduleSave}
+                  disabled={scheduleSaving || scheduleLoading}
+                  className="flex-1 py-3 bg-primary hover:bg-primary-hover text-background font-bold rounded-xl transition-all disabled:opacity-50 flex justify-center items-center gap-2"
+                >
+                  {scheduleSaving
+                    ? <><span className="w-4 h-4 border-2 border-background/20 border-t-background rounded-full animate-spin" />Menyimpan...</>
+                    : '💾 Simpan Jadwal'}
+                </button>
+              </div>
+              <button
+                onClick={handleScheduleReset}
+                disabled={scheduleSaving}
+                className="w-full py-2.5 text-sm text-neutral-500 hover:text-red-400 transition-colors"
+              >
+                🔄 Reset semua ke jam toko
+              </button>
             </div>
           </div>
         </div>
