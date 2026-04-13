@@ -84,6 +84,8 @@ export interface Booking {
   customer_address: string | null;
   tenant_id: string;
   final_price?: number | null;
+  booking_source: string;
+  payment_method: string | null;
   users?: { name: string; phone_number: string };
   barbers?: { name: string };
   services?: { name: string; price: number };
@@ -248,6 +250,50 @@ export default function AdminBookingsPage() {
       case 'cancelled': return <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">Cancelled</span>;
       default: return null;
     }
+  };
+
+  // Badge sumber transaksi — menunjukkan siapa & dari mana transaksi dibuat
+  const getSourceBadge = (booking: Booking) => {
+    const source = booking.booking_source;
+    const barberName = booking.barbers?.name;
+    const pm = booking.payment_method;
+
+    let icon = '';
+    let label = '';
+    let colorClass = '';
+
+    if (source === 'telegram_walk_in') {
+      icon = '💬';
+      label = `Telegram${barberName ? ` · ${barberName}` : ''}`;
+      colorClass = 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+    } else if (source === 'online') {
+      icon = '🌐';
+      label = 'Online (Pelanggan)';
+      colorClass = 'bg-violet-500/10 text-violet-400 border-violet-500/20';
+    } else if (source === 'web') {
+      icon = '🖥️';
+      label = 'Web POS';
+      colorClass = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+    } else {
+      icon = '📋';
+      label = source || 'Sistem';
+      colorClass = 'bg-neutral-700/50 text-neutral-400 border-neutral-700';
+    }
+
+    const pmLabel = pm === 'cash' ? '💵 Tunai' : pm === 'transfer' ? '🏦 Transfer' : pm === 'qris' ? '📱 QRIS' : pm ? pm : null;
+
+    return (
+      <div className="flex items-center gap-2 flex-wrap mt-2">
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${colorClass}`}>
+          {icon} {label}
+        </span>
+        {pmLabel && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border bg-neutral-800/80 text-neutral-400 border-neutral-700">
+            {pmLabel}
+          </span>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -418,6 +464,8 @@ export default function AdminBookingsPage() {
                         <span>💈 Kapster:</span>
                         <span className="font-medium text-neutral-200">{booking.barbers?.name || "-"}</span>
                       </div>
+                      {/* Sumber & metode pembayaran transaksi */}
+                      {getSourceBadge(booking)}
                     </div>
                   </div>
 
